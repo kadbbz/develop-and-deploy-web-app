@@ -7,6 +7,8 @@ It stores generated LiteApps under a shared root at `PLATFORM_DATA_ROOT/.lite-ap
 ## Structure
 
 - `scripts/` - app lifecycle and registry utilities
+- `customize/` - deploy-time templates for runtime customize modules and markdown guides
+- `templates/` - reusable app templates; each template must be discovered through its `readme.md`
 - `references/` - stack, scaffold, and UI guidance
 - `agents/` - agent configuration
 
@@ -24,8 +26,15 @@ It stores generated LiteApps under a shared root at `PLATFORM_DATA_ROOT/.lite-ap
 - Apps are served under `/<token>/`
 - All LiteApps share the public port `33333`
 - Each app process still uses its own internal port in `33334-39999`, routed through the shared host on `33333`
+- Before creating a new app, inspect `templates/*/readme.md` and choose the closest template
 - Tokens must be globally unique across generated apps
 - `app-registry.json` is stored at `.lite-apps/app-registry.json`
+- Runtime customize overrides are loaded from `.lite-apps/customize`
+- `login-service.js` and `master-data-service.js` are copied into generated apps under `server/customize/` when present in `.lite-apps/customize`
+- `available-master-data-services.md` and `style-intro.md` are copied into the generated app root when present in `.lite-apps/customize`
+- Unless the user explicitly asks for anonymous access, generated LiteApps should use the scaffolded `window.login_aspect` contract for authentication
+- When master data is needed, check `available-master-data-services.md` first and use the scaffolded `window.master_data_aspect` contract if a matching service exists
+- When `style-intro.md` is present in the generated app, treat it as the local UI contract together with `references/ui-style.md`
 - Registry records include `name`, `token`, `local_path`, `port`, `internal_port`, `description`, `created_by`, `last_modified_by`, `created_at`, `last_modified_at`, and `is_disabled`
 - In the registry, `name` is the same as `token`, and `created_by` is the owner user name
 - Each user can only operate on apps registered under that same `userName`

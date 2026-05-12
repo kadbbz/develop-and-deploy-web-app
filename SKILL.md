@@ -19,6 +19,7 @@ If the user says "轻应用" or "LiteApp", treat that as an explicit request to 
 
 - Resolve the LiteApp root as `PLATFORM_DATA_ROOT/.lite-apps` when `PLATFORM_DATA_ROOT` exists; otherwise use `~/.lite-apps`.
 - Create the generated web project under `.lite-apps/apps/{token}`.
+- Treat the repository `customize/` directory as deployment templates only. At runtime, read customize overrides from `.lite-apps/customize/`.
 - Treat `{token}` as an 8-character random identifier made only of uppercase letters and digits.
 - Ensure every new `{token}` is globally unique across all generated apps.
 - If `userName` is available in the runtime context, use it directly. If it is not discoverable from the environment or user request, ask the user before scaffolding.
@@ -34,6 +35,10 @@ If the user says "轻应用" or "LiteApp", treat that as an explicit request to 
 - If the user does not specify a product idea, default to a simple todo or notes app with one SQLite-backed entity and a complete happy path.
 - Extend an existing app when one already exists. Do not replace working user code without a strong reason.
 - Before modifying an existing generated web app, read its `.ai.md` file first.
+- Before creating a new app, inspect `templates/*/readme.md` and choose the closest template before inventing a new layout or flow from scratch.
+- Unless the user explicitly says the LiteApp is anonymous, use the scaffold's `window.login_aspect` contract for user login and authorization.
+- When the request needs master data, read `available-master-data-services.md` first. If a matching service exists, use the scaffold's `window.master_data_aspect` contract instead of inventing a separate fetch path.
+- Follow `style-intro.md` when it is present in the app root, together with `references/ui-style.md`.
 - Follow the UI direction in `references/ui-style.md` when designing the frontend. Capture the visual principles from Huashu Design's web examples without copying its original assets or branded content.
 - Make the app work under the subpath `/{token}/`, not just at `/`.
 - Expose all LiteApps through the shared public port `33333`.
@@ -51,23 +56,26 @@ If the user says "轻应用" or "LiteApp", treat that as an explicit request to 
 ## Workflow
 
 1. Inspect the workspace before changing anything.
-2. Resolve the output directory as `.lite-apps/apps/{token}` and create it if needed.
-3. Initialize the app folder and base app documents with `scripts/init-app.js`.
-4. Decide whether to extend an existing app in that target directory or scaffold a new one.
-5. Create a minimal but complete app:
+2. Read every available `templates/*/readme.md`, then choose the nearest template and adapt it.
+3. Resolve the output directory as `.lite-apps/apps/{token}` and create it if needed.
+4. Initialize the app folder and base app documents with `scripts/init-app.js`.
+5. Decide whether to extend an existing app in that target directory or scaffold a new one.
+6. Create a minimal but complete app:
    - React frontend with a small but usable UI
    - Express backend in TypeScript
    - SQLite database with schema initialization
    - At least one CRUD flow
    - Health endpoint
-6. Add root-level scripts so the app is easy to install, run, build, start, and re-run behind the shared public port.
-7. Scaffold the actual project files with `scripts/scaffold-app.js`.
-8. Sync app documentation with `scripts/sync-docs.js`.
-9. Prefer `scripts/deploy-app.js` for ordered deployment. It installs dependencies, builds the app, starts it, syncs docs, and updates the registry without race conditions.
-10. If deployment steps are run separately, run them in order: `install-app.js` -> `build-app.js` -> `start-app.js` -> `sync-docs.js` -> `update-registry.js`.
-11. Use `status-app.js` and `restart-app.js` for lifecycle checks and controlled restarts.
-12. Use `restore-apps.js` for post-reboot recovery, and `bootstrap-host.js` to print the command that a host-level startup mechanism should run.
-13. Return the required final app summary block together with the local commands and any important caveats.
+7. Add root-level scripts so the app is easy to install, run, build, start, and re-run behind the shared public port.
+8. Scaffold the actual project files with `scripts/scaffold-app.js`.
+9. Merge any existing `.lite-apps/customize/login-service.js` and `.lite-apps/customize/master-data-service.js` into the generated app's `server/customize/` folder.
+10. Copy `.lite-apps/customize/available-master-data-services.md` and `.lite-apps/customize/style-intro.md` into the app root when present.
+11. Sync app documentation with `scripts/sync-docs.js`.
+12. Prefer `scripts/deploy-app.js` for ordered deployment. It installs dependencies, builds the app, starts it, syncs docs, and updates the registry without race conditions.
+13. If deployment steps are run separately, run them in order: `install-app.js` -> `build-app.js` -> `start-app.js` -> `sync-docs.js` -> `update-registry.js`.
+14. Use `status-app.js` and `restart-app.js` for lifecycle checks and controlled restarts.
+15. Use `restore-apps.js` for post-reboot recovery, and `bootstrap-host.js` to print the command that a host-level startup mechanism should run.
+16. Return the required final app summary block together with the local commands and any important caveats.
 
 ## Implementation Defaults
 
@@ -77,6 +85,7 @@ If the user says "轻应用" or "LiteApp", treat that as an explicit request to 
 - Use the minimal script contracts in `references/scripts.md`.
 - Use the autoload compatibility rules in `references/autoload.md`.
 - Use the frontend style guidance in `references/ui-style.md`.
+- Prefer runtime customize service modules under `.lite-apps/customize/` and browser-facing bridge aspects generated by the scaffold.
 - Default local ports:
   - frontend dev server: `5173`
   - backend dev server: `3000` or `3001`

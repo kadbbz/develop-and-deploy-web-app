@@ -43,7 +43,27 @@ test("init-app and scaffold-app create an app scaffold", async (t) => {
   assert.equal(initResult.meta.title, "Task Tracker");
 
   const appDir = common.appRoot(userName, token);
-  const notes = fs.readFileSync(common.appNotesPath(userName, token), "utf8");  assert.match(notes, /Task Tracker/);
+  const customizeDir = common.customizeRoot();
+  fs.mkdirSync(customizeDir, { recursive: true });
+  fs.copyFileSync(
+    path.join(common.repoRoot(), "customize", "login-service.js"),
+    path.join(customizeDir, "login-service.js")
+  );
+  fs.copyFileSync(
+    path.join(common.repoRoot(), "customize", "master-data-service.js"),
+    path.join(customizeDir, "master-data-service.js")
+  );
+  fs.copyFileSync(
+    path.join(common.repoRoot(), "customize", "available-master-data-services.md"),
+    path.join(customizeDir, "available-master-data-services.md")
+  );
+  fs.copyFileSync(
+    path.join(common.repoRoot(), "customize", "style-intro.md"),
+    path.join(customizeDir, "style-intro.md")
+  );
+
+  const notes = fs.readFileSync(common.appNotesPath(userName, token), "utf8");
+  assert.match(notes, /Task Tracker/);
   assert.match(notes, /Verify init and scaffold flows\./);
 
   const scaffoldResult = runScript("scaffold-app.js", { userName, token }).json;
@@ -52,6 +72,21 @@ test("init-app and scaffold-app create an app scaffold", async (t) => {
   assert.ok(fs.existsSync(path.join(appDir, "README.md")));
   assert.ok(fs.existsSync(path.join(appDir, "client", "src", "App.tsx")));
   assert.ok(fs.existsSync(path.join(appDir, "server", "src", "index.ts")));
+  assert.ok(fs.existsSync(path.join(appDir, "server", "customize", "login-service.js")));
+  assert.ok(fs.existsSync(path.join(appDir, "server", "customize", "master-data-service.js")));
+  assert.ok(fs.existsSync(path.join(appDir, "client", "public", "customize", "login-aspect.js")));
+  assert.ok(fs.existsSync(path.join(appDir, "client", "public", "customize", "master-data-aspect.js")));
+  assert.ok(fs.existsSync(path.join(appDir, "available-master-data-services.md")));
+  assert.ok(fs.existsSync(path.join(appDir, "style-intro.md")));
+
+  const indexHtml = fs.readFileSync(path.join(appDir, "client", "index.html"), "utf8");
+  assert.match(indexHtml, /customize\/login-aspect\.js/);
+  assert.match(indexHtml, /customize\/master-data-aspect\.js/);
+
+  const appReadme = fs.readFileSync(path.join(appDir, "README.md"), "utf8");
+  assert.match(appReadme, /templates\/simple-form\/readme\.md/);
+  assert.match(appReadme, /available-master-data-services\.md/);
+  assert.match(appReadme, /server\/customize/);
 });
 
 test("set-autostart, sync-docs, update-registry, and list-apps stay in sync", async (t) => {

@@ -58,6 +58,14 @@ function appsRoot() {
   return path.join(dataRoot(), "apps");
 }
 
+function customizeRoot() {
+  return path.join(dataRoot(), "customize");
+}
+
+function templatesRoot() {
+  return path.join(repoRoot(), "templates");
+}
+
 function appRoot(userName, token) {
   assertSafeUserName(userName);
   assertSafeToken(token);
@@ -609,6 +617,7 @@ module.exports = {
   assertRegisteredOwnership,
   assertSafeToken,
   dataRoot,
+  customizeRoot,
   deriveAppDescriptors,
   ensureDir,
   extractLastJsonObject,
@@ -645,6 +654,7 @@ module.exports = {
   sharedHostLogFilePath,
   sharedHostPidFilePath,
   sharedHostRuntimeDir,
+  templatesRoot,
   syncAppRegistryEntry,
   syncPlatformRegistryEntry,
   appReachable,

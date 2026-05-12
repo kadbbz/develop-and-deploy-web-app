@@ -56,6 +56,8 @@ test("common resolves app registry under PLATFORM_DATA_ROOT", () => {
     path.join(common.dataRoot(), "app-registry.json")
   );
   assert.equal(common.registryPath(), path.join(common.dataRoot(), "app-registry.json"));
+  assert.equal(common.customizeRoot(), path.join(common.dataRoot(), "customize"));
+  assert.equal(common.templatesRoot(), path.join(common.repoRoot(), "templates"));
 });
 
 test("common writes and reads JSON files", () => {

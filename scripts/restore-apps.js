@@ -3,8 +3,8 @@
 const { spawnSync } = require("child_process");
 const {
   extractLastJsonObject,
+  listAppMetaRecords,
   parseArgs,
-  readAppRegistry,
   repoRoot,
 } = require("./common");
 
@@ -27,14 +27,13 @@ function runNodeScript(scriptName, args) {
   };
 }
 
-function flattenApps(registry, onlyUserName) {
-  const apps = Array.isArray(registry.apps) ? registry.apps : [];
-  return apps
-    .filter((app) => !onlyUserName || app.created_by === onlyUserName)
+function flattenApps(onlyUserName) {
+  return listAppMetaRecords()
+    .filter((app) => !onlyUserName || app.userName === onlyUserName)
+    .filter((app) => app.autoStart !== false)
     .map((app) => ({
-      userName: app.created_by,
+      userName: app.userName,
       token: app.token,
-      disabled: app.is_disabled === true,
     }));
 }
 
@@ -42,8 +41,7 @@ function main() {
   const args = parseArgs(process.argv);
   const onlyUserName = args.userName || null;
   const skipBuild = args.skipBuild ? true : false;
-  const registry = readAppRegistry();
-  const apps = flattenApps(registry, onlyUserName).filter((app) => !app.disabled);
+  const apps = flattenApps(onlyUserName);
 
   const results = [];
   for (const app of apps) {

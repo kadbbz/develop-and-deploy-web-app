@@ -7,8 +7,10 @@ const {
   assertRegisteredOwnership,
   assertSafeUserName,
   assertSafeToken,
+  customizeRoot,
   parseArgs,
   readJsonIfExists,
+  templatesRoot,
 } = require("./common");
 
 function writeText(filePath, content) {
@@ -18,6 +20,54 @@ function writeText(filePath, content) {
 
 function writeJson(filePath, data) {
   writeText(filePath, `${JSON.stringify(data, null, 2)}\n`);
+}
+
+function readTextIfExists(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  return fs.readFileSync(filePath, "utf8");
+}
+
+function copyFileIfExists(sourcePath, targetPath) {
+  if (!fs.existsSync(sourcePath)) {
+    return false;
+  }
+  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+  fs.copyFileSync(sourcePath, targetPath);
+  return true;
+}
+
+function availableCustomizeFiles() {
+  const runtimeRoot = customizeRoot();
+  return {
+    runtimeRoot,
+    loginJs: path.join(runtimeRoot, "login-service.js"),
+    masterDataJs: path.join(runtimeRoot, "master-data-service.js"),
+    masterDataMd: path.join(runtimeRoot, "available-master-data-services.md"),
+    styleMd: path.join(runtimeRoot, "style-intro.md"),
+  };
+}
+
+function readTemplateCatalog() {
+  const root = templatesRoot();
+  if (!fs.existsSync(root)) {
+    return [];
+  }
+
+  return fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => {
+      const readmePath = path.join(root, entry.name, "readme.md");
+      return {
+        name: entry.name,
+        readmePath,
+        readme: readTextIfExists(readmePath),
+      };
+    })
+    .filter((entry) => entry.readme)
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function rootPackageJson() {
@@ -146,7 +196,10 @@ export default defineConfig({
 `;
 }
 
-function indexHtml(title) {
+function indexHtml(title, customizeAssets = []) {
+  const customizeTags = customizeAssets
+    .map((assetPath) => `    <script src="./${assetPath}"></script>`)
+    .join("\n");
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -156,7 +209,7 @@ function indexHtml(title) {
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="./src/main.tsx"></script>
+${customizeTags ? `${customizeTags}\n` : ""}    <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>
 `;
@@ -173,6 +226,135 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <App />
   </React.StrictMode>
 );
+`;
+}
+
+function loginAspectBridge(basePath) {
+  return `(() => {
+  const apiBase = "${basePath}/api";
+  const storageKey = "liteapp:session:${basePath}";
+
+  function readSessionToken() {
+    try {
+      return window.localStorage.getItem(storageKey);
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function writeSessionToken(token) {
+    try {
+      if (!token) {
+        window.localStorage.removeItem(storageKey);
+        return;
+      }
+      window.localStorage.setItem(storageKey, token);
+    } catch (_error) {
+      // Ignore localStorage failures and continue with stateless requests.
+    }
+  }
+
+  async function readResponse(response) {
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message =
+        typeof payload.error === "string" && payload.error
+          ? payload.error
+          : "Authentication request failed";
+      throw new Error(message);
+    }
+    return payload;
+  }
+
+  function sessionHeaders() {
+    const token = readSessionToken();
+    return token ? { "x-liteapp-session": token } : {};
+  }
+
+  window.login_aspect = {
+    async login(credentials) {
+      const response = await fetch(\`\${apiBase}/auth/login\`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(credentials || {}),
+      });
+      const payload = await readResponse(response);
+      writeSessionToken(payload.sessionToken || null);
+      return payload;
+    },
+    async restore() {
+      const response = await fetch(\`\${apiBase}/auth/session\`, {
+        headers: sessionHeaders(),
+      });
+      if (response.status === 401) {
+        writeSessionToken(null);
+        return { authenticated: false, user: null };
+      }
+      return readResponse(response);
+    },
+    async logout() {
+      const response = await fetch(\`\${apiBase}/auth/logout\`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...sessionHeaders(),
+        },
+      });
+      const payload = await readResponse(response);
+      writeSessionToken(null);
+      return payload;
+    },
+    getSessionToken() {
+      return readSessionToken();
+    },
+  };
+})();
+`;
+}
+
+function masterDataAspectBridge(basePath) {
+  return `(() => {
+  const apiBase = "${basePath}/api";
+
+  async function readResponse(response) {
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message =
+        typeof payload.error === "string" && payload.error
+          ? payload.error
+          : "Master data request failed";
+      throw new Error(message);
+    }
+    return payload;
+  }
+
+  window.master_data_aspect = {
+    async isExist(serviceName) {
+      const response = await fetch(
+        \`\${apiBase}/master-data/services/\${encodeURIComponent(String(serviceName || ""))}\`
+      );
+      const payload = await readResponse(response);
+      return payload.exists === true;
+    },
+    async call(serviceName, payload, options) {
+      const response = await fetch(\`\${apiBase}/master-data/query\`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          serviceName,
+          payload: payload || {},
+          options: options || {},
+        }),
+      });
+      return readResponse(response);
+    },
+    async listServices() {
+      const response = await fetch(\`\${apiBase}/master-data/services\`);
+      const payload = await readResponse(response);
+      return payload.services || [];
+    },
+  };
+})();
 `;
 }
 
@@ -578,10 +760,101 @@ export { db };
 `;
 }
 
-function serverIndexSource() {
+function serverIndexSource(options = {}) {
+  const withLoginService = options.withLoginService === true;
+  const withMasterDataService = options.withMasterDataService === true;
+  const loginImports = withLoginService
+    ? 'const { createLoginService } = require("../customize/login-service.js");\n'
+    : "";
+  const masterDataImports = withMasterDataService
+    ? 'const { createMasterDataService } = require("../customize/master-data-service.js");\n'
+    : "";
+  const loginServiceSetup = withLoginService
+    ? `const loginService = createLoginService({
+  dbPath: path.resolve(__dirname, "../data/login-service.db"),
+});
+
+function sessionTokenFromRequest(req) {
+  const headerValue = req.get("x-liteapp-session") || req.get("authorization") || "";
+  if (headerValue.startsWith("Bearer ")) {
+    return headerValue.slice("Bearer ".length).trim();
+  }
+  return headerValue.trim();
+}
+
+app.post(\`\${apiBase}/auth/login\`, (req, res) => {
+  try {
+    const session = loginService.login({
+      username: req.body?.username,
+      password: req.body?.password,
+    });
+    res.json(session);
+  } catch (error) {
+    res.status(401).json({ error: error instanceof Error ? error.message : "Login failed" });
+  }
+});
+
+app.get(\`\${apiBase}/auth/session\`, (req, res) => {
+  const sessionToken = sessionTokenFromRequest(req);
+  if (!sessionToken) {
+    res.status(401).json({ error: "Missing session token" });
+    return;
+  }
+
+  const session = loginService.authenticate(sessionToken);
+  if (!session) {
+    res.status(401).json({ error: "Session expired or invalid" });
+    return;
+  }
+
+  res.json({
+    authenticated: true,
+    sessionToken,
+    user: session.user,
+    session: session.session,
+  });
+});
+
+app.post(\`\${apiBase}/auth/logout\`, (req, res) => {
+  const sessionToken = sessionTokenFromRequest(req);
+  if (sessionToken) {
+    loginService.logout(sessionToken);
+  }
+  res.json({ ok: true });
+});
+`
+    : "";
+  const masterDataServiceSetup = withMasterDataService
+    ? `const masterDataService = createMasterDataService();
+
+app.get(\`\${apiBase}/master-data/services\`, (_req, res) => {
+  res.json({ services: masterDataService.listServices() });
+});
+
+app.get(\`\${apiBase}/master-data/services/:serviceName\`, (req, res) => {
+  res.json({ exists: masterDataService.isExist(req.params.serviceName) });
+});
+
+app.post(\`\${apiBase}/master-data/query\`, async (req, res) => {
+  try {
+    const result = await masterDataService.call(
+      req.body?.serviceName,
+      req.body?.payload || {},
+      req.body?.options || {}
+    );
+    res.json(result);
+  } catch (error) {
+    res.status(502).json({
+      error: error instanceof Error ? error.message : "Master data request failed",
+    });
+  }
+});
+`
+    : "";
   return `import express from "express";
 import path from "path";
 import { db } from "./db";
+${loginImports}${masterDataImports}
 
 const app = express();
 const port = Number(process.env.PORT || "3000");
@@ -595,6 +868,8 @@ app.use(express.json());
 app.get(\`\${apiBase}/health\`, (_req, res) => {
   res.json({ ok: true, token, basePath });
 });
+
+${loginServiceSetup}${masterDataServiceSetup}
 
 app.get(\`\${apiBase}/todos\`, (_req, res) => {
   const items = db.prepare("SELECT id, title, done, created_at as createdAt FROM todos ORDER BY id DESC").all();
@@ -637,7 +912,16 @@ app.listen(port, "0.0.0.0", () => {
 `;
 }
 
-function readmeText(meta) {
+function readmeText(meta, options = {}) {
+  const templateList = options.templates && options.templates.length
+    ? options.templates.map((template) => `- ${template.name}: ${template.readmePath}`).join("\n")
+    : "- No template readme files were found under templates/.";
+  const customizeDocs = options.customizeDocs && options.customizeDocs.length
+    ? options.customizeDocs.map((item) => `- ${item}`).join("\n")
+    : "- No customize files were merged from the LiteApp data root.";
+  const customizeServices = options.customizeServices && options.customizeServices.length
+    ? options.customizeServices.map((item) => `- ${item}`).join("\n")
+    : "- No runtime customize service modules were merged.";
   return `# ${meta.title}
 
 Generated by the develop-and-deploy-web-app skill scaffold script.
@@ -655,21 +939,86 @@ Type: ${meta.appKind} (${meta.appLabel})
 - \`PORT\`
 - \`APP_TOKEN\`
 - \`BASE_PATH\`
+
+## Template Discovery
+
+Read these template guides before creating or extending the app:
+
+${templateList}
+
+## Customize Assets
+
+These runtime customize files were merged into the scaffold when present:
+
+${customizeDocs}
+
+## Customize Service Modules
+
+These service modules were copied into \`server/customize/\` and wired to browser-facing aspects:
+
+${customizeServices}
 `;
 }
 
 function scaffoldProject(meta) {
   const appDir = appRoot(meta.userName, meta.token);
   const basePath = `/${meta.token}`;
+  const customizeFiles = availableCustomizeFiles();
+  const copiedCustomizeAssets = [];
+  const copiedCustomizeDocs = [];
+  const copiedCustomizeServices = [];
+  const templateCatalog = readTemplateCatalog();
+  const withLoginService = copyFileIfExists(
+    customizeFiles.loginJs,
+    path.join(appDir, "server", "customize", "login-service.js")
+  );
+  const withMasterDataService = copyFileIfExists(
+    customizeFiles.masterDataJs,
+    path.join(appDir, "server", "customize", "master-data-service.js")
+  );
+
+  if (withLoginService) {
+    copiedCustomizeAssets.push("customize/login-aspect.js");
+    copiedCustomizeServices.push("login-service.js");
+  }
+  if (withMasterDataService) {
+    copiedCustomizeAssets.push("customize/master-data-aspect.js");
+    copiedCustomizeServices.push("master-data-service.js");
+  }
+  if (copyFileIfExists(customizeFiles.masterDataMd, path.join(appDir, "available-master-data-services.md"))) {
+    copiedCustomizeDocs.push("available-master-data-services.md");
+  }
+  if (copyFileIfExists(customizeFiles.styleMd, path.join(appDir, "style-intro.md"))) {
+    copiedCustomizeDocs.push("style-intro.md");
+  }
 
   writeJson(path.join(appDir, "package.json"), rootPackageJson());
   writeJson(path.join(appDir, "tsconfig.json"), rootTsConfig());
-  writeText(path.join(appDir, "README.md"), readmeText(meta));
+  writeText(
+    path.join(appDir, "README.md"),
+    readmeText(meta, {
+      templates: templateCatalog,
+      customizeDocs: copiedCustomizeDocs,
+      customizeServices: copiedCustomizeServices,
+    })
+  );
 
   writeJson(path.join(appDir, "client", "package.json"), clientPackageJson());
   writeJson(path.join(appDir, "client", "tsconfig.json"), clientTsConfig());
   writeText(path.join(appDir, "client", "vite.config.ts"), viteConfig(basePath));
-  writeText(path.join(appDir, "client", "index.html"), indexHtml(meta.title));
+  writeText(path.join(appDir, "client", "index.html"), indexHtml(meta.title, copiedCustomizeAssets));
+  if (withLoginService) {
+    writeText(
+      path.join(appDir, "client", "public", "customize", "login-aspect.js"),
+      loginAspectBridge(basePath)
+    );
+  }
+  if (withMasterDataService) {
+    writeText(
+      path.join(appDir, "client", "public", "customize", "master-data-aspect.js"),
+      masterDataAspectBridge(basePath)
+    );
+  }
   writeText(path.join(appDir, "client", "src", "main.tsx"), clientMain());
   writeText(path.join(appDir, "client", "src", "App.tsx"), clientApp(basePath));
   writeText(path.join(appDir, "client", "src", "styles.css"), clientStyles());
@@ -677,7 +1026,13 @@ function scaffoldProject(meta) {
   writeJson(path.join(appDir, "server", "package.json"), serverPackageJson());
   writeJson(path.join(appDir, "server", "tsconfig.json"), serverTsConfig());
   writeText(path.join(appDir, "server", "src", "db.ts"), serverDbSource());
-  writeText(path.join(appDir, "server", "src", "index.ts"), serverIndexSource());
+  writeText(
+    path.join(appDir, "server", "src", "index.ts"),
+    serverIndexSource({
+      withLoginService,
+      withMasterDataService,
+    })
+  );
 }
 
 function main() {

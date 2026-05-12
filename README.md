@@ -23,6 +23,8 @@ It organizes app workspaces by `userName` under `workspaces/web-apps/`, with hel
 ## Notes
 
 - Apps are served under `/<token>/`
+- All LiteApps share the public port `33333`
+- Each app process still uses its own internal port in `33334-39999`, routed through the shared host on `33333`
 - Tokens must be globally unique across generated apps
 - `workspaces/web-apps/registry.json` is the only source of truth for managed apps; scripts do not scan folders to discover apps
 - Each user can only operate on apps registered under that same `userName`

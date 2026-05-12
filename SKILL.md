@@ -23,7 +23,8 @@ If the user says "轻应用" or "LiteApp", treat that as an explicit request to 
 - If `userName` is available in the runtime context, use it directly. If it is not discoverable from the environment or user request, ask the user before scaffolding.
 - Do not scaffold the app at the repository root unless the user explicitly overrides the output rule.
 - Treat `{token}` as both the folder name and the URL segment.
-- Run each web app in its own isolated Node.js process. Do not rely on one shared Node.js host process to serve multiple app folders.
+- Run each web app in its own isolated Node.js process.
+- Use one shared LiteApp host on public port `33333` to route `/{token}/...` traffic to the correct app process.
 - Prefer a two-package layout: `client/` for the React app and `server/` for the Express API.
 - Prefer TypeScript everywhere.
 - Prefer Vite for the React frontend.
@@ -34,11 +35,12 @@ If the user says "轻应用" or "LiteApp", treat that as an explicit request to 
 - Before modifying an existing generated web app, read its `.ai.md` file first.
 - Follow the UI direction in `references/ui-style.md` when designing the frontend. Capture the visual principles from Huashu Design's web examples without copying its original assets or branded content.
 - Make the app work under the subpath `/{token}/`, not just at `/`.
-- Assign each app a dedicated port in the inclusive range `33333-39999`. Start at `33333` and increment until a free port is found.
-- Treat the final external URL as `<web-app-url-prefix>:{port}/{token}/`.
+- Expose all LiteApps through the shared public port `33333`.
+- Assign each app process a dedicated internal port in the inclusive range `33334-39999`. Start at `33334` and increment until a free port is found.
+- Treat the final external URL as `<web-app-url-prefix>:33333/{token}/`.
 - Maintain machine-readable and human-readable records so current users and apps can be queried without scanning source files manually.
 - Keep `../platform_data/web-app-registry.json` synchronized relative to the `.openclaw` root directory. Each record must include `name`, `token`, `file_path`, `port`, `created_at`, `modified_at`, and `user_name`.
-- Prefer the bundled Node scripts in `scripts/` for app initialization, port allocation, registry maintenance, startup, shutdown, and doc synchronization instead of re-implementing those flows ad hoc.
+- Prefer the bundled Node scripts in `scripts/` for app initialization, internal port allocation, shared-host startup, registry maintenance, shutdown, and doc synchronization instead of re-implementing those flows ad hoc.
 - Keep deployment automation local and explicit. Do not add scripts that fetch remote code, manage secrets, alter unrelated system state, or attempt privilege escalation.
 - Support restart recovery through registry-driven restore scripts, but do not silently install OS startup hooks or scheduled tasks.
 
@@ -54,7 +56,7 @@ If the user says "轻应用" or "LiteApp", treat that as an explicit request to 
    - SQLite database with schema initialization
    - At least one CRUD flow
    - Health endpoint
-6. Add root-level scripts so the app is easy to install, run, build, start, and re-run on a reassigned port.
+6. Add root-level scripts so the app is easy to install, run, build, start, and re-run behind the shared public port.
 7. Scaffold the actual project files with `scripts/scaffold-app.js`.
 8. Sync app documentation with `scripts/sync-docs.js`.
 9. Prefer `scripts/deploy-app.js` for ordered deployment. It installs dependencies, builds the app, starts it, syncs docs, and updates the registry without race conditions.
@@ -74,7 +76,8 @@ If the user says "轻应用" or "LiteApp", treat that as an explicit request to 
 - Default local ports:
   - frontend dev server: `5173`
   - backend dev server: `3000` or `3001`
-  - production app server: one free port in `33333-39999`
+  - shared public LiteApp host: `33333`
+  - production app server internal port: one free port in `33334-39999`
 - In development, use a Vite proxy for `/api`.
 - In production, serve `client/dist` from Express under the base path and keep API routes under `/{token}/api`.
 - Store the SQLite database in a project-local path such as `server/data/app.db`.
@@ -83,9 +86,10 @@ If the user says "轻应用" or "LiteApp", treat that as an explicit request to 
 
 - Do not stop after scaffolding files. The task is incomplete until the app is actually runnable from the generated folder and a final URL has been produced or a concrete blocker has been confirmed.
 - Prefer exposing the production build, not the Vite dev server, so the final URL reflects the real integrated app.
-- Compute the final URL as `<web-app-url-prefix>:{port}/{token}/`.
+- Compute the final URL as `<web-app-url-prefix>:33333/{token}/`.
 - When returning the final URL in the skill output, append exactly two trailing spaces after the URL.
-- Select `{port}` by scanning from `33333` upward and using the first free port up to `39999`.
+- Keep the external port fixed at `33333`.
+- Select the internal app port by scanning from `33334` upward and using the first free port up to `39999`.
 - Ensure frontend asset URLs, router behavior, and API calls all work when mounted beneath that subpath.
 - Keep each app isolated in its own process and directory. Do not multiplex multiple apps through one long-running server.
 - If a dev-time preview URL is needed, treat it as secondary. The primary deliverable is the final app URL plus its recorded metadata.
@@ -108,8 +112,8 @@ Always finish with:
 - the app summary
 - the main files or folders created or updated
 - install and run commands
-- the final URL in the form `<web-app-url-prefix>:{port}/{token}/  ` the url should be followed by exactly two trailing spaces
-- the assigned port
+- the final URL in the form `<web-app-url-prefix>:33333/{token}/  ` the url should be followed by exactly two trailing spaces
+- the assigned public port `33333` and the internal app port
 - the registry and app-doc files that were created or updated
 - any limitations, such as the URL depending on the local process remaining alive
 

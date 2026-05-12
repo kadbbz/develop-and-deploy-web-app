@@ -3,6 +3,7 @@
 const fs = require("fs");
 const { spawnSync } = require("child_process");
 const {
+  SHARED_PUBLIC_PORT,
   appReachable,
   appMetaPath,
   assertRegisteredOwnership,
@@ -10,11 +11,14 @@ const {
   assertSafeToken,
   hostUrl,
   isoNow,
+  localUrl,
   parseArgs,
   processAlive,
   readPidRecord,
   readJsonIfExists,
   removePidRecord,
+  resolveInternalPort,
+  request,
   syncWorkspaceRegistryEntry,
   writeJson,
 } = require("./common");
@@ -24,17 +28,16 @@ function stopPid(pid) {
     return false;
   }
 
-  if (process.platform === "win32") {
-    const result = spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], {
-      stdio: "ignore",
-    });
-    return result.status === 0;
-  }
-
   try {
     process.kill(pid, "SIGTERM");
     return true;
   } catch (error) {
+    if (process.platform === "win32") {
+      const result = spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], {
+        stdio: "ignore",
+      });
+      return result.status === 0;
+    }
     return false;
   }
 }
@@ -56,6 +59,14 @@ async function waitForShutdown(port, userName, token, attempts = 20) {
   return appReachable(port, userName, token);
 }
 
+async function requestGracefulShutdown(port, token) {
+  if (!Number.isInteger(port)) {
+    return false;
+  }
+  const response = await request(`${localUrl(port, token)}shutdown`);
+  return response.ok && response.statusCode === 200;
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   const userName = args.userName;
@@ -72,12 +83,15 @@ async function main() {
     Number.isInteger(pidRecord.pid)
       ? pidRecord.pid
       : null;
-  const port =
+  const internalPort = resolveInternalPort(meta, pidRecord);
+  const publicPort =
     pidRecord && Number.isInteger(pidRecord.port)
       ? pidRecord.port
       : meta && Number.isInteger(meta.port)
         ? meta.port
-        : null;
+        : internalPort
+          ? SHARED_PUBLIC_PORT
+          : null;
 
   if (!pidRecord && !meta) {
     process.stdout.write(`${JSON.stringify({ stopped: false, reason: "missing-pid-file" }, null, 2)}\n`);
@@ -85,20 +99,26 @@ async function main() {
   }
 
   const aliveBefore = processAlive(pid);
-  const stopped = aliveBefore ? stopPid(pid) : false;
+  const gracefulStopIssued =
+    internalPort && (aliveBefore || !pid)
+      ? await requestGracefulShutdown(internalPort, token)
+      : false;
+  const stoppedBySignal = aliveBefore ? stopPid(pid) : false;
   removePidRecord(userName, token);
 
   const reachableAfter =
-    port && (aliveBefore || stopped)
-      ? await waitForShutdown(port, userName, token)
-      : port
-        ? await appReachable(port, userName, token)
+    internalPort && (aliveBefore || stopped)
+      ? await waitForShutdown(internalPort, userName, token)
+      : internalPort
+        ? await appReachable(internalPort, userName, token)
         : { ok: false, statusCode: 0 };
+  const stopped = Boolean(gracefulStopIssued || stoppedBySignal || !reachableAfter.matched);
   if (meta) {
     const next = {
       ...meta,
-      port: port || meta.port || null,
-      url: port ? hostUrl(port, token) : meta.url,
+      port: publicPort || meta.port || null,
+      internalPort: internalPort || meta.internalPort || null,
+      url: publicPort ? hostUrl(publicPort, token) : meta.url,
       status: reachableAfter.ok ? "unknown" : "stopped",
       updatedAt: isoNow(),
     };
@@ -112,7 +132,8 @@ async function main() {
         stopped,
         pid,
         aliveBefore,
-        port,
+        port: publicPort,
+        internalPort,
         reachableAfter: reachableAfter.ok,
         matchedAfter: reachableAfter.matched,
       },

@@ -8,6 +8,7 @@ const path = require("path");
 
 const {
   cleanupSession,
+  cleanupSharedHost,
   common,
   randomUserName,
   randomToken,
@@ -16,6 +17,9 @@ const {
 } = require("../helpers/script-test-utils");
 
 test("init-app and scaffold-app create a workspace scaffold", async (t) => {
+  t.after(() => {
+    cleanupSharedHost();
+  });
   const userName = randomUserName("FULLINIT");
   const token = randomToken();
 
@@ -51,6 +55,9 @@ test("init-app and scaffold-app create a workspace scaffold", async (t) => {
 });
 
 test("set-autostart, sync-docs, update-registry, and list-apps stay in sync", async (t) => {
+  t.after(() => {
+    cleanupSharedHost();
+  });
   const userName = randomUserName("FULLMETA");
   const token = randomToken();
 
@@ -104,6 +111,9 @@ test("set-autostart, sync-docs, update-registry, and list-apps stay in sync", as
 });
 
 test("install, build, deploy, restart, stop, status, and restore work for a runnable app", async (t) => {
+  t.after(() => {
+    cleanupSharedHost();
+  });
   const userName = randomUserName("FULLRUN");
   const token = randomToken();
   const ports = [];
@@ -139,14 +149,19 @@ test("install, build, deploy, restart, stop, status, and restore work for a runn
     { userName, token },
     { timeoutMs: 30000 }
   ).json;
-  ports.push(started.port);
+  ports.push(started.internalPort);
   assert.equal(started.ready, true);
   assert.ok(Number.isInteger(started.pid));
+  assert.equal(started.port, 33333);
+  assert.ok(Number.isInteger(started.internalPort));
+  assert.notEqual(started.internalPort, started.port);
 
   let status = runScript("status-app.js", { userName, token }).json;
   assert.equal(status.alive, true);
   assert.equal(status.reachable, true);
   assert.equal(status.statusCode, 200);
+  assert.equal(status.port, 33333);
+  assert.equal(status.internalPort, started.internalPort);
 
   const stopped = runScript("stop-app.js", { userName, token }).json;
   assert.equal(stopped.stopped, true);
@@ -160,18 +175,20 @@ test("install, build, deploy, restart, stop, status, and restore work for a runn
     { userName, token },
     { timeoutMs: 120000 }
   ).json;
-  ports.push(deployed.started.port);
+  ports.push(deployed.started.internalPort);
   assert.equal(deployed.built, true);
   assert.equal(deployed.started.ready, true);
   assert.equal(deployed.registry.userName, userName);
+  assert.equal(deployed.started.port, 33333);
 
   const restarted = runScript(
     "restart-app.js",
     { userName, token },
     { timeoutMs: 120000 }
   ).json;
-  ports.push(restarted.deployed.started.port);
+  ports.push(restarted.deployed.started.internalPort);
   assert.equal(restarted.deployed.started.ready, true);
+  assert.equal(restarted.deployed.started.port, 33333);
 
   const stoppedAgain = runScript("stop-app.js", { userName, token }).json;
   assert.equal(stoppedAgain.stopped, true);
@@ -184,7 +201,8 @@ test("install, build, deploy, restart, stop, status, and restore work for a runn
   assert.equal(restored.attempted, 1);
   assert.equal(restored.restored, 1);
   assert.equal(restored.results[0].ok, true);
-  ports.push(restored.results[0].data.started.port);
+  ports.push(restored.results[0].data.started.internalPort);
+  assert.equal(restored.results[0].data.started.port, 33333);
 
   status = runScript("status-app.js", { userName, token }).json;
   assert.equal(status.alive, true);
@@ -192,6 +210,9 @@ test("install, build, deploy, restart, stop, status, and restore work for a runn
 });
 
 test("start-app reuses the tracked instance instead of spawning a second one", async (t) => {
+  t.after(() => {
+    cleanupSharedHost();
+  });
   const userName = randomUserName("FULLSINGLE");
   const token = randomToken();
   const ports = [];
@@ -209,18 +230,23 @@ test("start-app reuses the tracked instance instead of spawning a second one", a
   writeFakeRunnableApp(userName, token);
 
   const first = runScript("start-app.js", { userName, token }).json;
-  ports.push(first.port);
+  ports.push(first.internalPort);
   assert.equal(first.ready, true);
   assert.equal(first.reused, false);
+  assert.equal(first.port, 33333);
 
   const second = runScript("start-app.js", { userName, token }).json;
   assert.equal(second.ready, true);
   assert.equal(second.reused, true);
   assert.equal(second.port, first.port);
+  assert.equal(second.internalPort, first.internalPort);
   assert.equal(second.pid, first.pid);
 });
 
-test("start-app fails instead of drifting to a new port when the recorded port is occupied", async (t) => {
+test("start-app fails instead of drifting to a new internal port when the recorded internal port is occupied", async (t) => {
+  t.after(() => {
+    cleanupSharedHost();
+  });
   const userName = randomUserName("FULLPORT");
   const token = randomToken();
   const blocker = http.createServer((_req, res) => {
@@ -247,8 +273,9 @@ test("start-app fails instead of drifting to a new port when the recorded port i
   await new Promise((resolve) => blocker.listen(blockedPort, "127.0.0.1", resolve));
   common.writeJson(metaPath, {
     ...meta,
-    port: blockedPort,
-    url: common.hostUrl(blockedPort, token),
+    port: 33333,
+    internalPort: blockedPort,
+    url: common.hostUrl(33333, token),
   });
 
   let error = null;
@@ -259,10 +286,13 @@ test("start-app fails instead of drifting to a new port when the recorded port i
   }
 
   assert.ok(error);
-  assert.match(String(error.message), /Expected to reuse port 35555, but it is occupied/);
+  assert.match(String(error.message), /Expected to reuse internal port 35555, but it is occupied/);
 });
 
 test("registered ownership is enforced for app operations", async (t) => {
+  t.after(() => {
+    cleanupSharedHost();
+  });
   const ownerName = randomUserName("FULLOWNER");
   const otherUserName = randomUserName("FULLOTHER");
   const token = randomToken();
@@ -287,4 +317,54 @@ test("registered ownership is enforced for app operations", async (t) => {
 
   assert.ok(error);
   assert.match(String(error.message), /not registered under user/);
+});
+
+test("two apps can run simultaneously behind the shared port 33333", async (t) => {
+  t.after(() => {
+    cleanupSharedHost();
+  });
+
+  const userName = randomUserName("FULLSHARED");
+  const tokenA = randomToken();
+  const tokenB = randomToken();
+  const ports = [];
+
+  t.after(async () => {
+    await cleanupSession(userName, tokenA, ports);
+    await cleanupSession(userName, tokenB, ports);
+  });
+
+  runScript("init-app.js", {
+    userName,
+    token: tokenA,
+    title: "Shared Port A",
+    goal: "Verify shared port routing A.",
+  });
+  runScript("init-app.js", {
+    userName,
+    token: tokenB,
+    title: "Shared Port B",
+    goal: "Verify shared port routing B.",
+  });
+  writeFakeRunnableApp(userName, tokenA);
+  writeFakeRunnableApp(userName, tokenB);
+
+  const startedA = runScript("start-app.js", { userName, token: tokenA }, { timeoutMs: 30000 }).json;
+  const startedB = runScript("start-app.js", { userName, token: tokenB }, { timeoutMs: 30000 }).json;
+  ports.push(startedA.internalPort, startedB.internalPort);
+
+  assert.equal(startedA.port, 33333);
+  assert.equal(startedB.port, 33333);
+  assert.notEqual(startedA.internalPort, startedB.internalPort);
+
+  const healthA = await common.request(common.localUrl(33333, tokenA) + "api/health");
+  const healthB = await common.request(common.localUrl(33333, tokenB) + "api/health");
+
+  assert.equal(healthA.ok, true);
+  assert.equal(healthA.statusCode, 200);
+  assert.match(healthA.body, new RegExp(tokenA));
+
+  assert.equal(healthB.ok, true);
+  assert.equal(healthB.statusCode, 200);
+  assert.match(healthB.body, new RegExp(tokenB));
 });

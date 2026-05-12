@@ -6,9 +6,11 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 
 const repoRoot = path.resolve(__dirname, "..", "..");
+process.env.OPENCLAW_ROOT = path.join(repoRoot, ".test-openclaw", ".openclaw");
 const common = require(path.join(repoRoot, "scripts", "common.js"));
 
 function ensurePlatformDataDir() {
+  common.ensureDir(common.findOpenclawRoot());
   common.ensureDir(common.platformDataDir());
 }
 
@@ -77,6 +79,53 @@ function runScript(scriptName, argMap, options = {}) {
     stderr,
     json,
   };
+}
+
+function stopPid(pid) {
+  if (!Number.isInteger(pid)) {
+    return false;
+  }
+
+  if (process.platform === "win32") {
+    return spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" }).status === 0;
+  }
+
+  try {
+    process.kill(pid, "SIGTERM");
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+async function waitForPathRemoval(targetPath, attempts = 20) {
+  for (let i = 0; i < attempts; i += 1) {
+    if (!fs.existsSync(targetPath)) {
+      return true;
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return !fs.existsSync(targetPath);
+}
+
+async function removePathWithRetry(targetPath, attempts = 20) {
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      fs.rmSync(targetPath, { recursive: true, force: true });
+      if (!fs.existsSync(targetPath)) {
+        return true;
+      }
+    } catch (error) {
+      if (error && error.code !== "EBUSY" && error.code !== "EPERM") {
+        throw error;
+      }
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  fs.rmSync(targetPath, { recursive: true, force: true });
+  return !fs.existsSync(targetPath);
 }
 
 function writeFakeRunnableApp(userName, token) {
@@ -206,13 +255,33 @@ async function cleanupSession(userName, token, extraPorts = []) {
     await shutdownPort(port, userName, token);
   }
 
-  fs.rmSync(common.userRoot(userName), { recursive: true, force: true });
+  const appDir = common.appRoot(userName, token);
+  await waitForPathRemoval(appDir);
+  await removePathWithRetry(appDir);
   fs.rmSync(common.userIndexPath(userName), { force: true });
   common.removeWorkspaceRegistryEntry(userName, token);
+
+  const userDir = common.userRoot(userName);
+  if (fs.existsSync(userDir)) {
+    const remaining = fs.readdirSync(userDir, { withFileTypes: true });
+    if (remaining.length === 0) {
+      await removePathWithRetry(userDir);
+    }
+  }
+}
+
+function cleanupSharedHost() {
+  const pidRecord = common.readSharedHostPidRecord();
+  if (pidRecord && Number.isInteger(pidRecord.pid)) {
+    stopPid(pidRecord.pid);
+  }
+  common.removeSharedHostPidRecord();
+  fs.rmSync(common.sharedHostRuntimeDir(), { recursive: true, force: true });
 }
 
 module.exports = {
   cleanupSession,
+  cleanupSharedHost,
   common,
   ensurePlatformDataDir,
   randomUserName,

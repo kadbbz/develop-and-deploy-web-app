@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
 const {
+  SHARED_PUBLIC_PORT,
   appReachable,
   appMetaPath,
   appRoot,
@@ -20,12 +21,20 @@ const {
   processAlive,
   readPidRecord,
   readJsonIfExists,
+  readSharedHostPidRecord,
   removePidRecord,
+  removeSharedHostPidRecord,
+  request,
+  resolveInternalPort,
   runtimeDir,
+  sharedHostHealthUrl,
+  sharedHostLogFilePath,
+  sharedHostRuntimeDir,
   syncPlatformRegistryEntry,
   syncWorkspaceRegistryEntry,
-  writePidRecord,
   writeJson,
+  writePidRecord,
+  writeSharedHostPidRecord,
 } = require("./common");
 
 function wait(ms) {
@@ -83,7 +92,6 @@ function resolveStartCommand(serverDir, packageJsonPath) {
       file: process.execPath,
       args: tokens.slice(1),
       cwd: serverDir,
-      direct: true,
     };
   }
 
@@ -92,7 +100,6 @@ function resolveStartCommand(serverDir, packageJsonPath) {
       file: "cmd.exe",
       args: ["/d", "/s", "/c", "npm run start"],
       cwd: serverDir,
-      direct: false,
     };
   }
 
@@ -100,7 +107,6 @@ function resolveStartCommand(serverDir, packageJsonPath) {
     file: "npm",
     args: ["run", "start"],
     cwd: serverDir,
-    direct: false,
   };
 }
 
@@ -115,6 +121,73 @@ async function waitForReady(port, userName, token, attempts = 20) {
     await wait(500);
   }
   return false;
+}
+
+async function waitForSharedHost(attempts = 20) {
+  for (let i = 0; i < attempts; i += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const response = await request(sharedHostHealthUrl());
+    if (response.ok && response.statusCode === 200) {
+      return true;
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await wait(250);
+  }
+  return false;
+}
+
+async function ensureSharedHost() {
+  const pidRecord = readSharedHostPidRecord();
+  const hostFree = await isPortFree(SHARED_PUBLIC_PORT);
+
+  if (pidRecord && Number.isInteger(pidRecord.pid) && processAlive(pidRecord.pid)) {
+    const ready = await waitForSharedHost();
+    if (ready) {
+      return { reused: true, pid: pidRecord.pid };
+    }
+    throw new Error(
+      `Shared host pid ${pidRecord.pid} is alive but did not become healthy on port ${SHARED_PUBLIC_PORT}`
+    );
+  }
+
+  if (pidRecord && (!Number.isInteger(pidRecord.pid) || !processAlive(pidRecord.pid))) {
+    removeSharedHostPidRecord();
+  }
+
+  if (!hostFree) {
+    const ready = await waitForSharedHost();
+    if (ready) {
+      return { reused: true, pid: pidRecord && Number.isInteger(pidRecord.pid) ? pidRecord.pid : null };
+    }
+    throw new Error(`Expected shared port ${SHARED_PUBLIC_PORT} to be reserved for the LiteApp host, but it is occupied`);
+  }
+
+  ensureDir(sharedHostRuntimeDir());
+  const logFd = fs.openSync(sharedHostLogFilePath(), "a");
+  const child = spawn(process.execPath, [path.join(__dirname, "shared-host.js")], {
+    cwd: path.resolve(__dirname, ".."),
+    detached: true,
+    stdio: ["ignore", logFd, logFd],
+    env: {
+      ...process.env,
+    },
+  });
+
+  child.unref();
+  fs.closeSync(logFd);
+  writeSharedHostPidRecord({
+    pid: child.pid,
+    port: SHARED_PUBLIC_PORT,
+    startedAt: new Date().toISOString(),
+  });
+
+  const ready = await waitForSharedHost();
+  if (!ready) {
+    removeSharedHostPidRecord();
+    throw new Error(`Shared LiteApp host failed to become ready on port ${SHARED_PUBLIC_PORT}`);
+  }
+
+  return { reused: false, pid: child.pid };
 }
 
 async function main() {
@@ -139,32 +212,35 @@ async function main() {
     throw new Error(`Expected server package.json at ${packageJson}`);
   }
 
+  await ensureSharedHost();
   ensureDir(runtimeDir(userName, token));
+
   const pidRecord = readPidRecord(userName, token);
   const knownPid = pidRecord && Number.isInteger(pidRecord.pid) ? pidRecord.pid : null;
-  const knownPortFromPid = pidRecord && Number.isInteger(pidRecord.port) ? pidRecord.port : null;
-  const knownPortFromMeta = meta && Number.isInteger(meta.port) ? meta.port : null;
-  const preferredPort = knownPortFromPid || knownPortFromMeta || null;
+  const preferredPort = resolveInternalPort(meta, pidRecord);
 
   if (knownPid && processAlive(knownPid) && preferredPort) {
     const health = await appReachable(preferredPort, userName, token);
     if (health.ok && health.matched) {
       const next = {
         ...meta,
-        port: preferredPort,
-        url: hostUrl(preferredPort, token),
+        port: SHARED_PUBLIC_PORT,
+        internalPort: preferredPort,
+        url: hostUrl(SHARED_PUBLIC_PORT, token),
         status: "running",
         updatedAt: new Date().toISOString(),
       };
       writeJson(metaFile, next);
       syncWorkspaceRegistryEntry(next);
+      syncPlatformRegistryEntry(next);
       process.stdout.write(
         `${JSON.stringify(
           {
             pid: knownPid,
-            port: preferredPort,
+            port: SHARED_PUBLIC_PORT,
+            internalPort: preferredPort,
             url: next.url,
-            readinessUrl: localUrl(preferredPort, token),
+            readinessUrl: localUrl(SHARED_PUBLIC_PORT, token),
             ready: true,
             reused: true,
             logPath: logFilePath(userName, token),
@@ -176,7 +252,7 @@ async function main() {
       return;
     }
     throw new Error(
-        `Refusing to start a second instance: tracked pid ${knownPid} is still alive but app health is not clean on port ${preferredPort}`
+      `Refusing to start a second instance: tracked pid ${knownPid} is still alive but app health is not clean on internal port ${preferredPort}`
     );
   }
 
@@ -184,59 +260,59 @@ async function main() {
     removePidRecord(userName, token);
   }
 
-  let port = preferredPort;
-  if (port) {
-    const reachable = await appReachable(port, userName, token);
+  let internalPort = preferredPort;
+  if (internalPort) {
+    const reachable = await appReachable(internalPort, userName, token);
     if (reachable.ok && reachable.matched) {
       throw new Error(
-        `Refusing to start a second instance: app is already reachable on port ${port} but no live tracked pid can be safely reused`
+        `Refusing to start a second instance: app is already reachable on internal port ${internalPort} but no live tracked pid can be safely reused`
       );
     }
-    const portFree = await isPortFree(port);
+    const portFree = await isPortFree(internalPort);
     if (!portFree) {
-      throw new Error(`Expected to reuse port ${port}, but it is occupied`);
+      throw new Error(`Expected to reuse internal port ${internalPort}, but it is occupied`);
     }
   } else {
-    port = await findFreePort();
+    internalPort = await findFreePort();
   }
+
   const basePath = `/${token}`;
-  const url = hostUrl(port, token);
-  const readinessUrl = localUrl(port, token);
+  const publicUrl = hostUrl(SHARED_PUBLIC_PORT, token);
+  const readinessUrl = localUrl(SHARED_PUBLIC_PORT, token);
 
   const logPath = logFilePath(userName, token);
   const logFd = fs.openSync(logPath, "a");
   const command = resolveStartCommand(serverDir, packageJson);
-  const child = spawn(
-    command.file,
-    command.args,
-    {
-      cwd: command.cwd,
-      detached: true,
-      stdio: ["ignore", logFd, logFd],
-      env: {
-        ...process.env,
-        PORT: String(port),
-        USER_NAME: userName,
-        SESSION_ID: userName,
-        APP_TOKEN: token,
-        BASE_PATH: basePath,
-      },
-    }
-  );
+  const child = spawn(command.file, command.args, {
+    cwd: command.cwd,
+    detached: true,
+    stdio: ["ignore", logFd, logFd],
+    env: {
+      ...process.env,
+      PORT: String(internalPort),
+      USER_NAME: userName,
+      SESSION_ID: userName,
+      APP_TOKEN: token,
+      BASE_PATH: basePath,
+    },
+  });
 
   child.unref();
   fs.closeSync(logFd);
+
   writePidRecord(userName, token, {
     pid: child.pid,
-    port,
+    port: SHARED_PUBLIC_PORT,
+    internalPort,
     startedAt: new Date().toISOString(),
   });
 
-  const ready = await waitForReady(port, userName, token);
+  const ready = await waitForReady(internalPort, userName, token);
   const next = {
     ...meta,
-    port,
-    url,
+    port: SHARED_PUBLIC_PORT,
+    internalPort,
+    url: publicUrl,
     status: ready ? "running" : "starting",
     updatedAt: new Date().toISOString(),
   };
@@ -245,7 +321,20 @@ async function main() {
   syncPlatformRegistryEntry(next);
 
   process.stdout.write(
-    `${JSON.stringify({ pid: child.pid, port, url, readinessUrl, ready, reused: false, logPath }, null, 2)}\n`
+    `${JSON.stringify(
+      {
+        pid: child.pid,
+        port: SHARED_PUBLIC_PORT,
+        internalPort,
+        url: publicUrl,
+        readinessUrl,
+        ready,
+        reused: false,
+        logPath,
+      },
+      null,
+      2
+    )}\n`
   );
 }
 

@@ -1,6 +1,7 @@
 "use strict";
 
 const {
+  SHARED_PUBLIC_PORT,
   appReachable,
   appMetaPath,
   assertRegisteredOwnership,
@@ -11,6 +12,7 @@ const {
   readPidRecord,
   readJsonIfExists,
   removePidRecord,
+  resolveInternalPort,
 } = require("./common");
 
 async function main() {
@@ -26,10 +28,11 @@ async function main() {
   const pidRecord = readPidRecord(userName, token);
   const pid = pidRecord && Number.isInteger(pidRecord.pid) ? pidRecord.pid : null;
   const alive = processAlive(pid);
-  const portFromPid = pidRecord && Number.isInteger(pidRecord.port) ? pidRecord.port : null;
-  const portFromMeta = meta && Number.isInteger(meta.port) ? meta.port : null;
-  const port = portFromPid || portFromMeta || null;
-  const health = port ? await appReachable(port, userName, token) : { ok: false, statusCode: 0 };
+  const publicPortFromPid = pidRecord && Number.isInteger(pidRecord.port) ? pidRecord.port : null;
+  const publicPortFromMeta = meta && Number.isInteger(meta.port) ? meta.port : null;
+  const internalPort = resolveInternalPort(meta, pidRecord);
+  const port = publicPortFromPid || publicPortFromMeta || (internalPort ? SHARED_PUBLIC_PORT : null);
+  const health = internalPort ? await appReachable(internalPort, userName, token) : { ok: false, statusCode: 0 };
   const orphaned = !alive && health.matched;
   const consistent = alive ? health.matched : !health.matched;
   if (!alive && pidRecord) {
@@ -43,9 +46,10 @@ async function main() {
         token,
         pid,
         alive,
-        trackedPort: portFromPid,
-        metaPort: portFromMeta,
+        trackedPort: publicPortFromPid,
+        metaPort: publicPortFromMeta,
         port,
+        internalPort,
         url: meta ? meta.url : null,
         status: meta ? meta.status : "missing",
         reachable: health.ok,

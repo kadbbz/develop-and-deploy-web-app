@@ -61,6 +61,8 @@ function main() {
     started.ready ? "running" : "starting",
     "--port",
     String(started.port),
+    "--internalPort",
+    String(started.internalPort),
     "--url",
     started.url,
   ]);

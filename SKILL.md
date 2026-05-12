@@ -37,7 +37,7 @@ If the user says "轻应用" or "LiteApp", treat that as an explicit request to 
 - Assign each app a dedicated port in the inclusive range `33333-39999`. Start at `33333` and increment until a free port is found.
 - Treat the final external URL as `<web-app-url-prefix>:{port}/{token}/`.
 - Maintain machine-readable and human-readable records so current users and apps can be queried without scanning source files manually.
-- Keep `/var/platform_data/web-app-registry.json` synchronized with all created apps. Each record must include `name`, `token`, `file_path`, `port`, `created_at`, `modified_at`, and `user_name`.
+- Keep `../platform_data/web-app-registry.json` synchronized relative to the `.openclaw` root directory. Each record must include `name`, `token`, `file_path`, `port`, `created_at`, `modified_at`, and `user_name`.
 - Prefer the bundled Node scripts in `scripts/` for app initialization, port allocation, registry maintenance, startup, shutdown, and doc synchronization instead of re-implementing those flows ad hoc.
 - Keep deployment automation local and explicit. Do not add scripts that fetch remote code, manage secrets, alter unrelated system state, or attempt privilege escalation.
 - Support restart recovery through registry-driven restore scripts, but do not silently install OS startup hooks or scheduled tasks.

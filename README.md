@@ -28,5 +28,5 @@ It organizes app workspaces by `userName` under `workspaces/web-apps/`, with hel
 - Each user can only operate on apps registered under that same `userName`
 - Runtime metadata is stored in `APP-META.json`, `APP-NOTES.md`, `.ai.md`, and registry files under `workspaces/web-apps/`
 - Before modifying an existing generated app, read its `.ai.md`
-- A platform-wide app list is synchronized to `/var/platform_data/web-app-registry.json`
+- A platform-wide app list is synchronized to `../platform_data/web-app-registry.json` relative to the `.openclaw` root directory
 - Platform registry records include `name`, `token`, `file_path`, `port`, `created_at`, `modified_at`, `user_name`, `app_kind`, and `app_label`

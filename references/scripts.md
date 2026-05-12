@@ -35,7 +35,7 @@ Use these scripts instead of ad hoc deployment logic whenever possible.
 - `init-app.js` must reject duplicate tokens across all generated apps.
 - `sync-docs.js` updates the per-app metadata, notes, and AI context.
 - `update-registry.js` updates `workspaces/web-apps/registry.json` and `workspaces/web-apps/users/{userName}.json`.
-- `init-app.js`, `start-app.js`, `sync-docs.js`, `update-registry.js`, and `remove-app.js` keep `/var/platform_data/web-app-registry.json` synchronized with `name`, `token`, `file_path`, `port`, `created_at`, `modified_at`, and `user_name`.
+- `init-app.js`, `start-app.js`, `sync-docs.js`, `update-registry.js`, and `remove-app.js` keep `../platform_data/web-app-registry.json` synchronized relative to the `.openclaw` root directory, with `name`, `token`, `file_path`, `port`, `created_at`, `modified_at`, and `user_name`.
 - `list-apps.js` returns current registry data.
 - `install-app.js` runs `npm install` inside the generated app workspace.
 - `build-app.js` runs `npm run build` inside the generated app workspace.

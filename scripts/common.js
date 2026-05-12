@@ -5,9 +5,11 @@ const path = require("path");
 const net = require("net");
 const http = require("http");
 
-const MIN_PORT = 33333;
+const SHARED_PUBLIC_PORT = 33333;
+const MIN_PORT = 33334;
 const MAX_PORT = 39999;
 const TOKEN_LENGTH = 8;
+const SHARED_HOST_HEALTH_PATH = "/__shared_host/health";
 
 function assertSafeUserName(userName) {
   if (!userName || !/^[A-Za-z0-9_-]+$/.test(userName)) {
@@ -70,12 +72,79 @@ function registryPath() {
   return path.join(webAppsRoot(), "registry.json");
 }
 
+function envPath(name) {
+  const value = process.env[name];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function openclawRootFromEnv() {
+  const configuredRoot =
+    envPath("OPENCLAW_ROOT") ||
+    envPath("OPENCLAW_HOME") ||
+    envPath("OPENCLAW_DIR");
+
+  if (!configuredRoot) {
+    return null;
+  }
+
+  return path.resolve(configuredRoot);
+}
+
+function defaultOpenclawRoot() {
+  const homeDir = envPath("HOME") || envPath("USERPROFILE");
+  if (!homeDir) {
+    return null;
+  }
+  return path.join(path.resolve(homeDir), ".openclaw");
+}
+
+function findOpenclawRoot(startDir = repoRoot()) {
+  const configuredRoot = openclawRootFromEnv();
+  if (configuredRoot) {
+    return configuredRoot;
+  }
+
+  let currentDir = path.resolve(startDir);
+  while (true) {
+    const candidate = path.join(currentDir, ".openclaw");
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+      return candidate;
+    }
+
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) {
+      break;
+    }
+    currentDir = parentDir;
+  }
+
+  return defaultOpenclawRoot();
+}
+
 function platformDataDir() {
-  return path.resolve(path.sep, "var", "platform_data");
+  const openclawRoot = findOpenclawRoot();
+  if (!openclawRoot) {
+    throw new Error(
+      "Cannot resolve .openclaw root. Set OPENCLAW_ROOT or create a .openclaw directory in an ancestor path."
+    );
+  }
+  return path.join(path.dirname(openclawRoot), "platform_data");
 }
 
 function platformRegistryPath() {
   return path.join(platformDataDir(), "web-app-registry.json");
+}
+
+function sharedHostRuntimeDir() {
+  return path.join(webAppsRoot(), ".shared-runtime");
+}
+
+function sharedHostPidFilePath() {
+  return path.join(sharedHostRuntimeDir(), "shared-host.pid");
+}
+
+function sharedHostLogFilePath() {
+  return path.join(sharedHostRuntimeDir(), "shared-host.log");
 }
 
 function userIndexPath(userName) {
@@ -119,6 +188,83 @@ function writeJson(filePath, data) {
   fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
+function readSharedHostPidRecord() {
+  const pidFile = sharedHostPidFilePath();
+  if (!fs.existsSync(pidFile)) {
+    return null;
+  }
+  const raw = fs.readFileSync(pidFile, "utf8").trim();
+  if (!raw) {
+    return null;
+  }
+  const parsed = raw.startsWith("{") ? JSON.parse(raw) : { pid: Number(raw) };
+  return parsed && Number.isInteger(parsed.pid) ? parsed : null;
+}
+
+function writeSharedHostPidRecord(record) {
+  ensureDir(sharedHostRuntimeDir());
+  fs.writeFileSync(
+    sharedHostPidFilePath(),
+    `${JSON.stringify(record, null, 2)}\n`,
+    "utf8"
+  );
+}
+
+function removeSharedHostPidRecord() {
+  fs.rmSync(sharedHostPidFilePath(), { force: true });
+}
+
+function toPascalCase(value) {
+  const parts = String(value || "")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return "";
+  }
+
+  return parts
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join("");
+}
+
+function deriveAppDescriptors(meta = {}) {
+  const explicitKind = toPascalCase(meta.appKind);
+  const explicitLabel = toPascalCase(meta.appLabel);
+  const inferredKind =
+    toPascalCase(meta.title) ||
+    toPascalCase(meta.goal) ||
+    "WebApp";
+
+  return {
+    appKind: explicitKind || inferredKind,
+    appLabel: explicitLabel || "WebApp",
+  };
+}
+
+function resolveInternalPort(meta, pidRecord = null) {
+  const pidInternalPort =
+    pidRecord && Number.isInteger(pidRecord.internalPort)
+      ? pidRecord.internalPort
+      : pidRecord &&
+          Number.isInteger(pidRecord.port) &&
+          pidRecord.port !== SHARED_PUBLIC_PORT
+        ? pidRecord.port
+        : null;
+
+  const metaInternalPort =
+    meta && Number.isInteger(meta.internalPort)
+      ? meta.internalPort
+      : meta &&
+          Number.isInteger(meta.port) &&
+          meta.port !== SHARED_PUBLIC_PORT
+        ? meta.port
+        : null;
+
+  return pidInternalPort || metaInternalPort || null;
+}
+
 function normalizeWorkspaceRegistry(registry) {
   const source = registry && typeof registry === "object" ? registry : {};
   const users = Array.isArray(source.users) ? source.users : [];
@@ -131,6 +277,7 @@ function normalizeWorkspaceRegistry(registry) {
           token: app.token,
           path: app.path,
           port: app.port,
+          internalPort: app.internalPort,
           url: app.url,
           title: app.title,
           goal: app.goal,
@@ -168,6 +315,7 @@ function workspaceAppRecord(meta) {
     token: meta.token,
     path: meta.path,
     port: meta.port,
+    internalPort: meta.internalPort,
     url: meta.url,
     title: meta.title,
     goal: meta.goal,
@@ -407,6 +555,10 @@ function localUrl(port, token) {
   return `http://127.0.0.1:${port}/${token}/`;
 }
 
+function sharedHostHealthUrl() {
+  return `http://127.0.0.1:${SHARED_PUBLIC_PORT}${SHARED_HOST_HEALTH_PATH}`;
+}
+
 function request(url) {
   return new Promise((resolve) => {
     const req = http.get(url, (res) => {
@@ -544,6 +696,8 @@ function extractLastJsonObject(text) {
 }
 
 module.exports = {
+  SHARED_PUBLIC_PORT,
+  SHARED_HOST_HEALTH_PATH,
   MIN_PORT,
   MAX_PORT,
   appMetaPath,
@@ -558,6 +712,7 @@ module.exports = {
   findRegisteredApp,
   findAppByToken,
   findFreePort,
+  findOpenclawRoot,
   generateToken,
   hostUrl,
   isoNow,
@@ -570,23 +725,31 @@ module.exports = {
   processAlive,
   pidFilePath,
   readPidRecord,
+  readSharedHostPidRecord,
   readUserIndex,
   readJsonIfExists,
   readWorkspaceRegistry,
   removePlatformRegistryEntry,
   removePidRecord,
+  removeSharedHostPidRecord,
   removeWorkspaceRegistryEntry,
+  resolveInternalPort,
   request,
   registryPath,
   registryRoot,
   repoRoot,
   runtimeDir,
+  sharedHostHealthUrl,
+  sharedHostLogFilePath,
+  sharedHostPidFilePath,
+  sharedHostRuntimeDir,
   syncWorkspaceRegistryEntry,
   userIndexPath,
   userRoot,
   syncPlatformRegistryEntry,
   appReachable,
   webAppsRoot,
+  writeSharedHostPidRecord,
   writeWorkspaceRegistry,
   writePidRecord,
   writeJson,

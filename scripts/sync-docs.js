@@ -107,6 +107,9 @@ function main() {
   if (args.port) {
     next.port = Number(args.port);
   }
+  if (args.internalPort) {
+    next.internalPort = Number(args.internalPort);
+  }
   if (args.url) {
     next.url = args.url;
   } else if (next.port) {

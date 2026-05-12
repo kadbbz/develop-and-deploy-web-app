@@ -45,6 +45,30 @@ test("common path helpers and URLs are stable", () => {
   assert.equal(common.hostUrl(33333, token), "http://host:33333/ABCD1234/");
   assert.equal(common.localUrl(33333, token), "http://127.0.0.1:33333/ABCD1234/");
   assert.ok(!Number.isNaN(Date.parse(common.isoNow())));
+  assert.equal(common.SHARED_PUBLIC_PORT, 33333);
+  assert.equal(common.MIN_PORT, 33334);
+});
+
+test("common resolves platform data relative to the .openclaw parent directory", () => {
+  const originalOpenclawRoot = process.env.OPENCLAW_ROOT;
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dda-openclaw-"));
+  const openclawRoot = path.join(tempDir, ".openclaw");
+
+  try {
+    fs.mkdirSync(openclawRoot, { recursive: true });
+    process.env.OPENCLAW_ROOT = openclawRoot;
+
+    assert.equal(common.findOpenclawRoot(), openclawRoot);
+    assert.equal(common.platformDataDir(), path.join(tempDir, "platform_data"));
+    assert.equal(common.platformRegistryPath(), path.join(tempDir, "platform_data", "web-app-registry.json"));
+  } finally {
+    if (originalOpenclawRoot === undefined) {
+      delete process.env.OPENCLAW_ROOT;
+    } else {
+      process.env.OPENCLAW_ROOT = originalOpenclawRoot;
+    }
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 });
 
 test("common writes and reads JSON files", () => {

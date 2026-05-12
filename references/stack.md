@@ -37,7 +37,7 @@ If `concurrently` is not desired, equivalent scripts that use `npm --prefix` are
 - Keep the UI intentionally simple and complete, not decorative placeholder text.
 - Call the backend through `/api`.
 - In development, configure a proxy from Vite to the backend server.
-- Configure Vite `base` to `/${sessionId}/${token}/` for production builds when the path is known at scaffold time.
+- Configure Vite `base` to `/${token}/` for production builds when the path is known at scaffold time.
 - Ensure the production server reads its assigned port from configuration or environment instead of hard-coding one shared port.
 
 ## Backend Defaults
@@ -48,7 +48,7 @@ If `concurrently` is not desired, equivalent scripts that use `npm --prefix` are
 - Expose:
   - `GET /api/health` behind the base path
   - at least one CRUD resource such as `/api/todos` behind the base path
-- In production, serve the built frontend from Express under `/${sessionId}/${token}/`.
+- In production, serve the built frontend from Express under `/${token}/`.
 
 ## SQLite Defaults
 
@@ -77,5 +77,5 @@ Before exposing the app publicly:
 1. Install dependencies successfully.
 2. Build both packages successfully.
 3. Start the production server successfully on a free port in `33333-39999`.
-4. Confirm the page loads locally through `/${sessionId}/${token}/`.
-5. Confirm the API responds locally through `/${sessionId}/${token}/api/...`.
+4. Confirm the page loads locally through `/${token}/`.
+5. Confirm the API responds locally through `/${token}/api/...`.

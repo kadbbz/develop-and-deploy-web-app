@@ -10,6 +10,7 @@ const {
   registryPath,
   registryRoot,
   sessionIndexPath,
+  syncPlatformRegistryEntry,
   webAppsRoot,
   writeJson,
 } = require("./common");
@@ -75,6 +76,7 @@ function main() {
   sessionList.sort((a, b) => a.sessionId.localeCompare(b.sessionId));
 
   writeJson(registryPath(), { sessions: sessionList });
+  syncPlatformRegistryEntry(meta);
   writeJson(sessionIndexPath(sessionId), {
     sessionId,
     apps: sessionRecord.apps,

@@ -26,7 +26,7 @@ Then add:
 - a `server/tsconfig.json`
 - a `server/src/` tree
 - a Vite proxy in `client/vite.config.ts`
-- a Vite `base` value set to `/${sessionId}/${token}/`
+- a Vite `base` value set to `/${token}/`
 - app-local docs: `APP-META.json` and `APP-NOTES.md`
 
 ## Backend Package Defaults
@@ -79,19 +79,19 @@ Prefer:
 
 Use a small SQLite-backed CRUD resource. A todo flow is the default when the user does not provide a domain:
 
-- `GET /{sessionId}/{token}/api/health`
-- `GET /{sessionId}/{token}/api/todos`
-- `POST /{sessionId}/{token}/api/todos`
-- `PATCH /{sessionId}/{token}/api/todos/:id`
-- `DELETE /{sessionId}/{token}/api/todos/:id`
+- `GET /{token}/api/health`
+- `GET /{token}/api/todos`
+- `POST /{token}/api/todos`
+- `PATCH /{token}/api/todos/:id`
+- `DELETE /{token}/api/todos/:id`
 
 ## Production Serving
 
 Make Express serve the built frontend:
 
-- serve static files from `client/dist` under `/${sessionId}/${token}/`
+- serve static files from `client/dist` under `/${token}/`
 - return `index.html` for non-API routes inside that base path
-- keep API routes under `/${sessionId}/${token}/api`
+- keep API routes under `/${token}/api`
 
-This makes the app compatible with platform auto-loading at `http://host:{port}/{sessionId}/{token}/`.
+This makes the app compatible with platform auto-loading at `http://host:{port}/{token}/`.
 This also keeps the app compatible with independent-process hosting on any assigned port in `33333-39999`.

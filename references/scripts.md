@@ -15,6 +15,7 @@ Use these scripts instead of ad hoc deployment logic whenever possible.
 - `node scripts/status-app.js --sessionId <id> --token <TOKEN>`
 - `node scripts/restart-app.js --sessionId <id> --token <TOKEN> [--skipBuild]`
 - `node scripts/stop-app.js --sessionId <id> --token <TOKEN>`
+- `node scripts/remove-app.js --sessionId <id> --token <TOKEN>`
 - `node scripts/scaffold-app.js --sessionId <id> --token <TOKEN>`
 - `node scripts/restore-apps.js [--sessionId <id>] [--skipBuild]`
 - `node scripts/set-autostart.js --sessionId <id> --token <TOKEN> [--enabled true|false]`
@@ -30,17 +31,20 @@ Use these scripts instead of ad hoc deployment logic whenever possible.
 
 ## Expected State
 
-- `init-app.js` creates the app directory plus `APP-META.json` and `APP-NOTES.md`.
-- `sync-docs.js` updates the per-app metadata and notes.
+- `init-app.js` creates the app directory plus `APP-META.json`, `APP-NOTES.md`, and `.ai.md`.
+- `init-app.js` must reject duplicate tokens across all generated apps.
+- `sync-docs.js` updates the per-app metadata, notes, and AI context.
 - `update-registry.js` updates `workspaces/web-apps/registry.json` and `workspaces/web-apps/sessions/{sessionId}.json`.
+- `init-app.js`, `start-app.js`, `sync-docs.js`, `update-registry.js`, and `remove-app.js` keep `/var/platform_data/web-app-registry.json` synchronized with `name`, `token`, `file_path`, `port`, `created_at`, `modified_at`, and `session`.
 - `list-apps.js` returns current registry data.
 - `install-app.js` runs `npm install` inside the generated app workspace.
 - `build-app.js` runs `npm run build` inside the generated app workspace.
-- `start-app.js` finds a free port in `33333-39999`, starts the app, and writes runtime info.
+- `start-app.js` finds a free port in `33333-39999`, starts the app under `/<token>/`, and writes runtime info.
 - `deploy-app.js` runs install, build, start, doc sync, and registry update in order.
 - `status-app.js` reports PID, port, URL, and reachability for an app.
 - `restart-app.js` stops and redeploys an app in order.
 - `stop-app.js` stops the recorded process for that app if present.
+- `remove-app.js` stops the app, removes its directory, and deletes its registry entries.
 - `scaffold-app.js` generates the actual React, Express, and SQLite project files.
 - `restore-apps.js` redeploys all apps marked for auto-start from the registry.
 - `set-autostart.js` toggles whether an app should be included in restore operations.

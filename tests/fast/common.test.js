@@ -42,8 +42,8 @@ test("common path helpers and URLs are stable", () => {
 
   assert.equal(common.repoRoot(), path.resolve(__dirname, "..", ".."));
   assert.ok(common.appRoot(sessionId, token).endsWith(path.join("workspaces", "web-apps", sessionId, token)));
-  assert.equal(common.hostUrl(33333, sessionId, token), "http://host:33333/SESSION1/ABCD1234/");
-  assert.equal(common.localUrl(33333, sessionId, token), "http://127.0.0.1:33333/SESSION1/ABCD1234/");
+  assert.equal(common.hostUrl(33333, token), "http://host:33333/ABCD1234/");
+  assert.equal(common.localUrl(33333, token), "http://127.0.0.1:33333/ABCD1234/");
   assert.ok(!Number.isNaN(Date.parse(common.isoNow())));
 });
 

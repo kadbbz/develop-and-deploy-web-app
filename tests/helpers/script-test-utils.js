@@ -8,6 +8,10 @@ const { spawnSync } = require("child_process");
 const repoRoot = path.resolve(__dirname, "..", "..");
 const common = require(path.join(repoRoot, "scripts", "common.js"));
 
+function ensurePlatformDataDir() {
+  common.ensureDir(common.platformDataDir());
+}
+
 function randomSessionId(prefix = "TEST") {
   const stamp = Date.now().toString(36).toUpperCase();
   const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -33,6 +37,7 @@ function toCliArgs(argMap = {}) {
 }
 
 function runScript(scriptName, argMap, options = {}) {
+  ensurePlatformDataDir();
   const args = Array.isArray(argMap) ? argMap : toCliArgs(argMap);
   const scriptPath = path.join(repoRoot, "scripts", scriptName);
   const result = spawnSync(process.execPath, [scriptPath, ...args], {
@@ -103,9 +108,8 @@ function writeFakeRunnableApp(sessionId, token) {
 const http = require("http");
 
 const port = Number(process.env.PORT || "3000");
-const sessionId = process.env.SESSION_ID || "SESSION";
 const token = process.env.APP_TOKEN || "APP00000";
-const basePath = process.env.BASE_PATH || \`/\${sessionId}/\${token}\`;
+const basePath = process.env.BASE_PATH || \`/\${token}\`;
 
 let closing = false;
 
@@ -128,7 +132,7 @@ const server = http.createServer((req, res) => {
 
   if (req.url === \`\${basePath}/api/health\`) {
     res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ ok: true, sessionId, token, basePath }));
+    res.end(JSON.stringify({ ok: true, token, basePath }));
     return;
   }
 
@@ -177,7 +181,7 @@ async function shutdownPort(port, sessionId, token) {
   if (!Number.isInteger(port)) {
     return;
   }
-  await request(`${common.localUrl(port, sessionId, token)}shutdown`);
+  await request(`${common.localUrl(port, token)}shutdown`);
 }
 
 async function cleanupSession(sessionId, token, extraPorts = []) {
@@ -214,6 +218,7 @@ async function cleanupSession(sessionId, token, extraPorts = []) {
 module.exports = {
   cleanupSession,
   common,
+  ensurePlatformDataDir,
   randomSessionId,
   randomToken,
   repoRoot,

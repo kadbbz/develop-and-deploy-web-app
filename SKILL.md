@@ -17,6 +17,7 @@ Build a simple full-stack web app in the current workspace, run it locally as it
 
 - Create the generated web project under `workspaces/web-apps/{sessionId}/{token}`.
 - Treat `{token}` as an 8-character random identifier made only of uppercase letters and digits.
+- Ensure every new `{token}` is globally unique across all generated apps.
 - If `sessionId` is available in the runtime context, use it directly. If it is not discoverable from the environment or user request, ask the user before scaffolding.
 - Do not scaffold the app at the repository root unless the user explicitly overrides the output rule.
 - Treat `{token}` as both the folder name and the URL segment.
@@ -28,11 +29,13 @@ Build a simple full-stack web app in the current workspace, run it locally as it
 - Prefer one final HTTP service. In production mode, make Express serve the built frontend and the `/api` endpoints from the same server process.
 - If the user does not specify a product idea, default to a simple todo or notes app with one SQLite-backed entity and a complete happy path.
 - Extend an existing app when one already exists. Do not replace working user code without a strong reason.
+- Before modifying an existing generated web app, read its `.ai.md` file first.
 - Follow the UI direction in `references/ui-style.md` when designing the frontend. Capture the visual principles from Huashu Design's web examples without copying its original assets or branded content.
-- Make the app work under the subpath `/{sessionId}/{token}/`, not just at `/`.
+- Make the app work under the subpath `/{token}/`, not just at `/`.
 - Assign each app a dedicated port in the inclusive range `33333-39999`. Start at `33333` and increment until a free port is found.
-- Treat the final external URL as `http://host:{port}/{sessionId}/{token}/`.
+- Treat the final external URL as `<web-app-url-prefix>:{port}/{token}/`.
 - Maintain machine-readable and human-readable records so current sessions and apps can be queried without scanning source files manually.
+- Keep `/var/platform_data/web-app-registry.json` synchronized with all created apps. Each record must include `name`, `token`, `file_path`, `port`, `created_at`, `modified_at`, and `session`.
 - Prefer the bundled Node scripts in `scripts/` for app initialization, port allocation, registry maintenance, startup, shutdown, and doc synchronization instead of re-implementing those flows ad hoc.
 - Keep deployment automation local and explicit. Do not add scripts that fetch remote code, manage secrets, alter unrelated system state, or attempt privilege escalation.
 - Support restart recovery through registry-driven restore scripts, but do not silently install OS startup hooks or scheduled tasks.
@@ -71,14 +74,14 @@ Build a simple full-stack web app in the current workspace, run it locally as it
   - backend dev server: `3000` or `3001`
   - production app server: one free port in `33333-39999`
 - In development, use a Vite proxy for `/api`.
-- In production, serve `client/dist` from Express under the base path and keep API routes under `/{sessionId}/{token}/api`.
+- In production, serve `client/dist` from Express under the base path and keep API routes under `/{token}/api`.
 - Store the SQLite database in a project-local path such as `server/data/app.db`.
 
 ## Platform URL Rules
 
 - Do not stop after scaffolding files. The task is incomplete until the app is actually runnable from the generated folder and a final URL has been produced or a concrete blocker has been confirmed.
 - Prefer exposing the production build, not the Vite dev server, so the final URL reflects the real integrated app.
-- Compute the final URL as `http://host:{port}/{sessionId}/{token}/`.
+- Compute the final URL as `<web-app-url-prefix>:{port}/{token}/`.
 - Select `{port}` by scanning from `33333` upward and using the first free port up to `39999`.
 - Ensure frontend asset URLs, router behavior, and API calls all work when mounted beneath that subpath.
 - Keep each app isolated in its own process and directory. Do not multiplex multiple apps through one long-running server.
@@ -89,6 +92,8 @@ Build a simple full-stack web app in the current workspace, run it locally as it
 - Make it easy to answer "which sessions exist?" and "which apps exist?" without launching app code.
 - Maintain a root registry and per-session indices with `scripts/update-registry.js`.
 - Keep one machine-readable app metadata file and one human-readable app notes file in every app directory, managed through `scripts/init-app.js` and `scripts/sync-docs.js`.
+- Keep `.ai.md` in every app directory to record user requirements and AI design notes.
+- Do not keep `config.json` inside generated app directories.
 - Whenever the app is changed, update the corresponding metadata and notes in the same turn.
 - When the user asks to inspect existing apps, answer from the registry files first and only inspect app directories when details are missing or stale.
 
@@ -100,7 +105,7 @@ Always finish with:
 - the app summary
 - the main files or folders created or updated
 - install and run commands
-- the final URL in the form `http://host:{port}/{sessionId}/{token}/`
+- the final URL in the form `<web-app-url-prefix>:{port}/{token}/`
 - the assigned port
 - the registry and app-doc files that were created or updated
 - any limitations, such as the URL depending on the local process remaining alive

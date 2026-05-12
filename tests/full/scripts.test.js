@@ -3,6 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
+const http = require("http");
 const path = require("path");
 
 const {
@@ -186,4 +187,75 @@ test("install, build, deploy, restart, stop, status, and restore work for a runn
   status = runScript("status-app.js", { sessionId, token }).json;
   assert.equal(status.alive, true);
   assert.equal(status.reachable, true);
+});
+
+test("start-app reuses the tracked instance instead of spawning a second one", async (t) => {
+  const sessionId = randomSessionId("FULLSINGLE");
+  const token = randomToken();
+  const ports = [];
+
+  t.after(async () => {
+    await cleanupSession(sessionId, token, ports);
+  });
+
+  runScript("init-app.js", {
+    sessionId,
+    token,
+    title: "Single Instance App",
+    goal: "Verify repeated start calls do not create duplicates.",
+  });
+  writeFakeRunnableApp(sessionId, token);
+
+  const first = runScript("start-app.js", { sessionId, token }).json;
+  ports.push(first.port);
+  assert.equal(first.ready, true);
+  assert.equal(first.reused, false);
+
+  const second = runScript("start-app.js", { sessionId, token }).json;
+  assert.equal(second.ready, true);
+  assert.equal(second.reused, true);
+  assert.equal(second.port, first.port);
+  assert.equal(second.pid, first.pid);
+});
+
+test("start-app fails instead of drifting to a new port when the recorded port is occupied", async (t) => {
+  const sessionId = randomSessionId("FULLPORT");
+  const token = randomToken();
+  const blocker = http.createServer((_req, res) => {
+    res.statusCode = 404;
+    res.end("occupied");
+  });
+
+  t.after(async () => {
+    blocker.close();
+    await cleanupSession(sessionId, token);
+  });
+
+  runScript("init-app.js", {
+    sessionId,
+    token,
+    title: "Port Reuse App",
+    goal: "Verify port conflicts fail closed.",
+  });
+  writeFakeRunnableApp(sessionId, token);
+
+  const metaPath = common.appMetaPath(sessionId, token);
+  const meta = common.readJsonIfExists(metaPath, null);
+  const blockedPort = 35555;
+  await new Promise((resolve) => blocker.listen(blockedPort, "127.0.0.1", resolve));
+  common.writeJson(metaPath, {
+    ...meta,
+    port: blockedPort,
+    url: common.hostUrl(blockedPort, token),
+  });
+
+  let error = null;
+  try {
+    runScript("start-app.js", { sessionId, token });
+  } catch (currentError) {
+    error = currentError;
+  }
+
+  assert.ok(error);
+  assert.match(String(error.message), /Expected to reuse port 35555, but it is occupied/);
 });

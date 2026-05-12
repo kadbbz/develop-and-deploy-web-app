@@ -35,6 +35,11 @@ function main() {
     ["--sessionId", sessionId, "--token", token],
     true
   );
+  if (stopped && stopped.reachableAfter) {
+    throw new Error(
+      `Refusing to restart while the previous instance is still reachable on port ${stopped.port}`
+    );
+  }
   const deployArgs = ["--sessionId", sessionId, "--token", token];
   if (args.skipBuild) {
     deployArgs.push("--skipBuild");

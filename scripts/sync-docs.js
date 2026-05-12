@@ -1,17 +1,24 @@
 "use strict";
 
 const fs = require("fs");
+const path = require("path");
 const {
   appMetaPath,
   appNotesPath,
+  appRoot,
   assertSafeSessionId,
   assertSafeToken,
   hostUrl,
   isoNow,
   parseArgs,
   readJsonIfExists,
+  syncPlatformRegistryEntry,
   writeJson,
 } = require("./common");
+
+function aiNotesPath(sessionId, token) {
+  return path.join(appRoot(sessionId, token), ".ai.md");
+}
 
 function upsertSection(markdown, heading, body) {
   const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -44,6 +51,26 @@ function changeLogEntry(previous, next) {
     changes.push("metadata synchronized");
   }
   return `- ${next.updatedAt}: ${changes.join("; ")}.`;
+}
+
+function aiNotesTemplate(meta) {
+  return `# AI Context
+
+## User Requirements
+
+- ${meta.goal}
+
+## AI Design Notes
+
+- ${meta.designSummary}
+- Stack: ${meta.stack.frontend}, ${meta.stack.backend}, ${meta.stack.database}
+- Base path: /${meta.token}/
+- URL: ${meta.url || "Pending startup"}
+
+## Working Rule
+
+- Read this file before modifying the generated web app.
+`;
 }
 
 function main() {
@@ -80,7 +107,7 @@ function main() {
   if (args.url) {
     next.url = args.url;
   } else if (next.port) {
-    next.url = hostUrl(next.port, sessionId, token);
+    next.url = hostUrl(next.port, token);
   }
   next.updatedAt = isoNow();
 
@@ -113,6 +140,9 @@ function main() {
   notes = upsertSection(notes, "Change log", mergedEntries);
 
   fs.writeFileSync(notesFile, `${notes.trim()}\n`, "utf8");
+  fs.writeFileSync(aiNotesPath(sessionId, token), aiNotesTemplate(next), "utf8");
+  fs.rmSync(path.join(appRoot(sessionId, token), "config.json"), { force: true });
+  syncPlatformRegistryEntry(next);
   process.stdout.write(`${JSON.stringify(next, null, 2)}\n`);
 }
 

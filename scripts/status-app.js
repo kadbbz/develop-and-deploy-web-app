@@ -1,49 +1,16 @@
 "use strict";
 
-const fs = require("fs");
-const http = require("http");
 const {
+  appReachable,
   appMetaPath,
   assertSafeSessionId,
   assertSafeToken,
-  localUrl,
   parseArgs,
-  pidFilePath,
+  processAlive,
+  readPidRecord,
   readJsonIfExists,
+  removePidRecord,
 } = require("./common");
-
-function readPidRecord(pidFile) {
-  if (!fs.existsSync(pidFile)) {
-    return null;
-  }
-  const raw = fs.readFileSync(pidFile, "utf8").trim();
-  if (!raw) {
-    return null;
-  }
-  return raw.startsWith("{") ? JSON.parse(raw) : { pid: Number(raw) };
-}
-
-function processAlive(pid) {
-  if (!Number.isInteger(pid)) {
-    return false;
-  }
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return false;
-  }
-}
-
-function request(url) {
-  return new Promise((resolve) => {
-    const req = http.get(url, (res) => {
-      res.resume();
-      resolve({ ok: true, statusCode: res.statusCode || 0 });
-    });
-    req.on("error", () => resolve({ ok: false, statusCode: 0 }));
-  });
-}
 
 async function main() {
   const args = parseArgs(process.argv);
@@ -54,12 +21,18 @@ async function main() {
   assertSafeToken(token);
 
   const meta = readJsonIfExists(appMetaPath(sessionId, token), null);
-  const pidRecord = readPidRecord(pidFilePath(sessionId, token));
+  const pidRecord = readPidRecord(sessionId, token);
   const pid = pidRecord && Number.isInteger(pidRecord.pid) ? pidRecord.pid : null;
   const alive = processAlive(pid);
-  const port = meta && Number.isInteger(meta.port) ? meta.port : null;
-  const health =
-    alive && port ? await request(localUrl(port, sessionId, token)) : { ok: false, statusCode: 0 };
+  const portFromPid = pidRecord && Number.isInteger(pidRecord.port) ? pidRecord.port : null;
+  const portFromMeta = meta && Number.isInteger(meta.port) ? meta.port : null;
+  const port = portFromPid || portFromMeta || null;
+  const health = port ? await appReachable(port, sessionId, token) : { ok: false, statusCode: 0 };
+  const orphaned = !alive && health.matched;
+  const consistent = alive ? health.matched : !health.matched;
+  if (!alive && pidRecord) {
+    removePidRecord(sessionId, token);
+  }
 
   process.stdout.write(
     `${JSON.stringify(
@@ -68,11 +41,16 @@ async function main() {
         token,
         pid,
         alive,
+        trackedPort: portFromPid,
+        metaPort: portFromMeta,
         port,
         url: meta ? meta.url : null,
         status: meta ? meta.status : "missing",
         reachable: health.ok,
+        matched: health.matched,
         statusCode: health.statusCode,
+        orphaned,
+        consistent,
       },
       null,
       2

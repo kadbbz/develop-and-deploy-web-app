@@ -27,19 +27,21 @@ function main() {
   assertRegisteredOwnership(userName, token);
 
   const cwd = appRoot(userName, token);
-  const npmCall = npmCommandArgs("install");
-  const result = spawnSync(npmCall.file, npmCall.args, {
-    cwd,
-    encoding: "utf8",
-    stdio: "inherit",
-    maxBuffer: 10 * 1024 * 1024,
-  });
+  for (const target of ["client", "server"]) {
+    const npmCall = npmCommandArgs("install");
+    const result = spawnSync(npmCall.file, npmCall.args, {
+      cwd: path.join(cwd, target),
+      encoding: "utf8",
+      stdio: "inherit",
+      maxBuffer: 10 * 1024 * 1024,
+    });
 
-  if (result.error) {
-    throw result.error;
-  }
-  if (result.status !== 0) {
-    throw new Error("npm install failed");
+    if (result.error) {
+      throw result.error;
+    }
+    if (result.status !== 0) {
+      throw new Error(`npm install failed in ${target}`);
+    }
   }
 
   process.stdout.write(

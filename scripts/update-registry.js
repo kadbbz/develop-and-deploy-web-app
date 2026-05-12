@@ -8,10 +8,9 @@ const {
   ensureDir,
   parseArgs,
   readJsonIfExists,
-  registryRoot,
   syncPlatformRegistryEntry,
-  syncWorkspaceRegistryEntry,
-  webAppsRoot,
+  syncAppRegistryEntry,
+  dataRoot,
   registryPath,
 } = require("./common");
 
@@ -29,10 +28,9 @@ function main() {
     throw new Error("Cannot update registry without APP-META.json");
   }
 
-  ensureDir(webAppsRoot());
-  ensureDir(registryRoot());
+  ensureDir(dataRoot());
 
-  syncWorkspaceRegistryEntry(meta);
+  syncAppRegistryEntry(meta);
   syncPlatformRegistryEntry(meta);
 
   process.stdout.write(

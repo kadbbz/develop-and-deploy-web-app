@@ -36,107 +36,40 @@ function repoRoot() {
   return path.resolve(__dirname, "..");
 }
 
-function webAppsRoot() {
-  return path.join(repoRoot(), "workspaces", "web-apps");
-}
-
-function userRoot(userName) {
-  assertSafeUserName(userName);
-  return path.join(webAppsRoot(), userName);
-}
-
-function appRoot(userName, token) {
-  assertSafeUserName(userName);
-  assertSafeToken(token);
-  return path.join(userRoot(userName), token);
-}
-
-function findAppByToken(token) {
-  assertSafeToken(token);
-  const registry = readWorkspaceRegistry();
-  for (const user of registry.users) {
-    for (const app of user.apps) {
-      if (app && app.token === token) {
-        return app;
-      }
-    }
-  }
-  return null;
-}
-
-function registryRoot() {
-  return path.join(webAppsRoot(), "users");
-}
-
-function registryPath() {
-  return path.join(webAppsRoot(), "registry.json");
-}
-
 function envPath(name) {
   const value = process.env[name];
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function openclawRootFromEnv() {
-  const configuredRoot =
-    envPath("OPENCLAW_ROOT") ||
-    envPath("OPENCLAW_HOME") ||
-    envPath("OPENCLAW_DIR");
-
-  if (!configuredRoot) {
-    return null;
+function dataRoot() {
+  const platformDataRoot = envPath("PLATFORM_DATA_ROOT");
+  if (platformDataRoot) {
+    return path.join(path.resolve(platformDataRoot), ".lite-apps");
   }
 
-  return path.resolve(configuredRoot);
-}
-
-function defaultOpenclawRoot() {
   const homeDir = envPath("HOME") || envPath("USERPROFILE");
   if (!homeDir) {
-    return null;
+    throw new Error("Cannot resolve home directory. Set PLATFORM_DATA_ROOT, HOME, or USERPROFILE.");
   }
-  return path.join(path.resolve(homeDir), ".openclaw");
+  return path.join(path.resolve(homeDir), ".lite-apps");
 }
 
-function findOpenclawRoot(startDir = repoRoot()) {
-  const configuredRoot = openclawRootFromEnv();
-  if (configuredRoot) {
-    return configuredRoot;
-  }
-
-  let currentDir = path.resolve(startDir);
-  while (true) {
-    const candidate = path.join(currentDir, ".openclaw");
-    if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
-      return candidate;
-    }
-
-    const parentDir = path.dirname(currentDir);
-    if (parentDir === currentDir) {
-      break;
-    }
-    currentDir = parentDir;
-  }
-
-  return defaultOpenclawRoot();
+function appsRoot() {
+  return path.join(dataRoot(), "apps");
 }
 
-function platformDataDir() {
-  const openclawRoot = findOpenclawRoot();
-  if (!openclawRoot) {
-    throw new Error(
-      "Cannot resolve .openclaw root. Set OPENCLAW_ROOT or create a .openclaw directory in an ancestor path."
-    );
-  }
-  return path.join(path.dirname(openclawRoot), "platform_data");
+function appRoot(userName, token) {
+  assertSafeUserName(userName);
+  assertSafeToken(token);
+  return path.join(appsRoot(), token);
 }
 
-function platformRegistryPath() {
-  return path.join(platformDataDir(), "web-app-registry.json");
+function registryPath() {
+  return path.join(dataRoot(), "app-registry.json");
 }
 
 function sharedHostRuntimeDir() {
-  return path.join(webAppsRoot(), ".shared-runtime");
+  return path.join(dataRoot(), ".shared-runtime");
 }
 
 function sharedHostPidFilePath() {
@@ -145,11 +78,6 @@ function sharedHostPidFilePath() {
 
 function sharedHostLogFilePath() {
   return path.join(sharedHostRuntimeDir(), "shared-host.log");
-}
-
-function userIndexPath(userName) {
-  assertSafeUserName(userName);
-  return path.join(registryRoot(), `${userName}.json`);
 }
 
 function appMetaPath(userName, token) {
@@ -243,6 +171,29 @@ function deriveAppDescriptors(meta = {}) {
   };
 }
 
+function listAppMetaRecords() {
+  if (!fs.existsSync(appsRoot())) {
+    return [];
+  }
+
+  const entries = fs.readdirSync(appsRoot(), { withFileTypes: true });
+  const metas = [];
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const meta = readJsonIfExists(path.join(appsRoot(), entry.name, "APP-META.json"), null);
+    if (!meta || !meta.token || !meta.userName) {
+      continue;
+    }
+    metas.push(meta);
+  }
+
+  metas.sort((a, b) => String(a.token).localeCompare(String(b.token)));
+  return metas;
+}
+
 function resolveInternalPort(meta, pidRecord = null) {
   const pidInternalPort =
     pidRecord && Number.isInteger(pidRecord.internalPort)
@@ -265,161 +216,82 @@ function resolveInternalPort(meta, pidRecord = null) {
   return pidInternalPort || metaInternalPort || null;
 }
 
-function normalizeWorkspaceRegistry(registry) {
-  const source = registry && typeof registry === "object" ? registry : {};
-  const users = Array.isArray(source.users) ? source.users : [];
+function normalizeRegistryEntry(entry) {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+
+  const name = entry.name || entry.title || null;
+  const localPath = entry.local_path || entry.path || entry.file_path || null;
+  const description = entry.description || entry.goal || null;
+  const createdBy = entry.created_by || entry.userName || entry.user_name || null;
+  const lastModifiedBy = entry.last_modified_by || createdBy || null;
+  const createdAt = entry.created_at || entry.createdAt || null;
+  const lastModifiedAt = entry.last_modified_at || entry.updatedAt || entry.modified_at || null;
+
   return {
-    users: users.map((entry) => ({
-      userName: entry.userName,
-      apps: Array.isArray(entry.apps)
-        ? entry.apps.map((app) => ({
-          userName: app.userName,
-          token: app.token,
-          path: app.path,
-          port: app.port,
-          internalPort: app.internalPort,
-          url: app.url,
-          title: app.title,
-          goal: app.goal,
-          status: app.status,
-          autoStart: app.autoStart !== false,
-          updatedAt: app.updatedAt,
-          ...deriveAppDescriptors(app),
-        }))
-        : [],
-    })),
+    name,
+    token: entry.token || name,
+    local_path: localPath,
+    port: entry.port,
+    internal_port: entry.internal_port ?? entry.internalPort ?? null,
+    description,
+    created_by: createdBy,
+    last_modified_by: lastModifiedBy,
+    created_at: createdAt,
+    last_modified_at: lastModifiedAt,
+    is_disabled: entry.is_disabled === true,
   };
 }
 
-function readWorkspaceRegistry() {
-  return normalizeWorkspaceRegistry(readJsonIfExists(registryPath(), { users: [] }));
+function normalizeRegistry(registry) {
+  const source = registry && typeof registry === "object" ? registry : {};
+  const apps = Array.isArray(source.apps) ? source.apps : [];
+  return {
+    apps: apps
+      .map((entry) => normalizeRegistryEntry(entry))
+      .filter(Boolean),
+  };
 }
 
-function writeWorkspaceRegistry(registry) {
-  writeJson(registryPath(), normalizeWorkspaceRegistry(registry));
+function readAppRegistry() {
+  return normalizeRegistry(readJsonIfExists(registryPath(), { apps: [] }));
+}
+
+function writeAppRegistry(registry) {
+  writeJson(registryPath(), normalizeRegistry(registry));
 }
 
 function readUserIndex(userName) {
-  const registry = readWorkspaceRegistry();
-  const user = Array.isArray(registry.users)
-    ? registry.users.find((entry) => entry.userName === userName)
-    : null;
-  return user
-    ? { userName, apps: Array.isArray(user.apps) ? user.apps : [] }
-    : { userName, apps: [] };
-}
-
-function workspaceAppRecord(meta) {
+  assertSafeUserName(userName);
+  const apps = listAppMetaRecords();
   return {
-    userName: meta.userName,
-    token: meta.token,
-    path: meta.path,
-    port: meta.port,
-    internalPort: meta.internalPort,
-    url: meta.url,
-    title: meta.title,
-    goal: meta.goal,
-    status: meta.status,
-    autoStart: meta.autoStart !== false,
-    updatedAt: meta.updatedAt,
-    ...deriveAppDescriptors(meta),
+    userName,
+    apps: apps.filter((app) => app.userName === userName),
   };
 }
 
-function syncWorkspaceRegistryEntry(meta) {
-  const registry = readWorkspaceRegistry();
-  const users = Array.isArray(registry.users) ? [...registry.users] : [];
-  const userIdx = users.findIndex((entry) => entry.userName === meta.userName);
-  const userRecord =
-    userIdx === -1
-      ? { userName: meta.userName, apps: [] }
-      : {
-        ...users[userIdx],
-        apps: Array.isArray(users[userIdx].apps) ? [...users[userIdx].apps] : [],
-      };
-
-  const record = workspaceAppRecord(meta);
-  const appIdx = userRecord.apps.findIndex((item) => item && item.token === meta.token);
-  if (appIdx === -1) {
-    userRecord.apps.push(record);
-  } else {
-    userRecord.apps[appIdx] = record;
-  }
-  userRecord.apps.sort((a, b) => a.token.localeCompare(b.token));
-
-  if (userIdx === -1) {
-    users.push(userRecord);
-  } else {
-    users[userIdx] = userRecord;
-  }
-  users.sort((a, b) => a.userName.localeCompare(b.userName));
-
-  writeWorkspaceRegistry({ users });
-  writeJson(userIndexPath(meta.userName), {
-    userName: meta.userName,
-    apps: userRecord.apps,
-  });
-  return record;
-}
-
-function removeWorkspaceRegistryEntry(userName, token) {
-  const registry = readWorkspaceRegistry();
-  const users = Array.isArray(registry.users) ? registry.users : [];
-  const nextUsers = [];
-  let removed = false;
-
-  for (const user of users) {
-    if (!user || user.userName !== userName) {
-      nextUsers.push(user);
-      continue;
-    }
-
-    const apps = Array.isArray(user.apps) ? user.apps : [];
-    const nextApps = apps.filter((app) => !(app && app.token === token));
-    removed = removed || nextApps.length !== apps.length;
-
-    if (nextApps.length > 0) {
-      nextUsers.push({
-        ...user,
-        apps: nextApps,
-      });
-    }
-  }
-
-  writeWorkspaceRegistry({ users: nextUsers });
-  const remainingUser = nextUsers.find((user) => user.userName === userName);
-  if (remainingUser) {
-    writeJson(userIndexPath(userName), {
-      userName,
-      apps: remainingUser.apps,
-    });
-  } else {
-    fs.rmSync(userIndexPath(userName), { force: true });
-  }
-
-  return removed;
-}
-
-function platformRegistryRecord(meta) {
-  const descriptors = deriveAppDescriptors(meta);
+function appRegistryRecord(meta) {
   return {
-    name: meta.title,
+    name: meta.token,
     token: meta.token,
-    file_path: meta.path,
+    local_path: meta.path,
     port: meta.port,
+    internal_port: meta.internalPort ?? null,
+    description: meta.goal,
+    created_by: meta.createdBy || meta.userName,
+    last_modified_by: meta.lastModifiedBy || meta.userName,
     created_at: meta.createdAt,
-    modified_at: meta.updatedAt,
-    user_name: meta.userName,
-    app_kind: descriptors.appKind,
-    app_label: descriptors.appLabel,
+    last_modified_at: meta.updatedAt,
+    is_disabled: meta.isDisabled === true,
   };
 }
 
-function syncPlatformRegistryEntry(meta) {
-  const current = readJsonIfExists(platformRegistryPath(), { apps: [] });
-  const apps = Array.isArray(current.apps) ? [...current.apps] : [];
-  const record = platformRegistryRecord(meta);
-  const index = apps.findIndex((item) => item && item.token === meta.token);
+function syncAppRegistryEntry(meta) {
+  const registry = readAppRegistry();
+  const apps = Array.isArray(registry.apps) ? [...registry.apps] : [];
+  const record = appRegistryRecord(meta);
+  const index = apps.findIndex((item) => item && item.local_path === meta.path);
 
   if (index === -1) {
     apps.push(record);
@@ -428,25 +300,60 @@ function syncPlatformRegistryEntry(meta) {
   }
 
   apps.sort((a, b) => {
-    const userCompare = String(a.user_name).localeCompare(String(b.user_name));
-    if (userCompare !== 0) {
-      return userCompare;
-    }
-    return String(a.file_path).localeCompare(String(b.file_path));
+    return String(a.local_path).localeCompare(String(b.local_path));
   });
 
-  writeJson(platformRegistryPath(), { apps });
+  writeAppRegistry({ apps });
+  return record;
+}
+
+function removeAppRegistryEntry(userName, token) {
+  const meta = readJsonIfExists(appMetaPath(userName, token), null);
+  const registry = readAppRegistry();
+  const apps = Array.isArray(registry.apps) ? registry.apps : [];
+  const nextApps = meta
+    ? apps.filter((item) => !(item && item.local_path === meta.path))
+    : apps.filter((item) => !(item && item.local_path === path.join("apps", token).replaceAll("\\", "/")));
+  writeAppRegistry({ apps: nextApps });
+  return nextApps.length !== apps.length;
+}
+
+function findAppByToken(token) {
+  assertSafeToken(token);
+  return listAppMetaRecords().find((app) => app && app.token === token) || null;
+}
+
+function parseBooleanFlag(value, fallback = false) {
+  if (value === true || value === "true") {
+    return true;
+  }
+  if (value === false || value === "false") {
+    return false;
+  }
+  return fallback;
+}
+
+function platformRegistryPath() {
+  return path.join(dataRoot(), "app-registry.json");
+}
+
+function platformRegistryRecord(meta) {
+  return appRegistryRecord(meta);
+}
+
+function syncPlatformRegistryEntry(meta) {
+  const record = platformRegistryRecord(meta);
+  syncAppRegistryEntry(record);
   return record;
 }
 
 function removePlatformRegistryEntry(userName, token) {
+  const removed = removeAppRegistryEntry(userName, token);
   const current = readJsonIfExists(platformRegistryPath(), { apps: [] });
   const apps = Array.isArray(current.apps) ? current.apps : [];
-  const nextApps = apps.filter((item) => !(item && item.token === token && item.user_name === userName));
-  writeJson(platformRegistryPath(), { apps: nextApps });
   return {
-    removed: nextApps.length !== apps.length,
-    count: nextApps.length,
+    removed,
+    count: apps.length,
   };
 }
 
@@ -547,8 +454,8 @@ function isoNow() {
   return new Date().toISOString();
 }
 
-function hostUrl(port, token) {
-  return `http://host:${port}/${token}/`;
+function hostUrl(_port, token) {
+  return `http://you-host-name:${SHARED_PUBLIC_PORT}/${token}/`;
 }
 
 function localUrl(port, token) {
@@ -627,13 +534,7 @@ function parseArgs(argv) {
 function findRegisteredApp(userName, token) {
   assertSafeUserName(userName);
   assertSafeToken(token);
-  const registry = readWorkspaceRegistry();
-  const user = Array.isArray(registry.users)
-    ? registry.users.find((entry) => entry.userName === userName)
-    : null;
-  const app = user && Array.isArray(user.apps)
-    ? user.apps.find((item) => item && item.token === token)
-    : null;
+  const app = listAppMetaRecords().find((item) => item && item.userName === userName && item.token === token);
   return app || null;
 }
 
@@ -703,16 +604,17 @@ module.exports = {
   appMetaPath,
   appNotesPath,
   appRoot,
+  appsRoot,
   assertSafeUserName,
   assertRegisteredOwnership,
   assertSafeToken,
+  dataRoot,
   deriveAppDescriptors,
   ensureDir,
   extractLastJsonObject,
   findRegisteredApp,
   findAppByToken,
   findFreePort,
-  findOpenclawRoot,
   generateToken,
   hostUrl,
   isoNow,
@@ -720,37 +622,34 @@ module.exports = {
   localUrl,
   logFilePath,
   parseArgs,
-  platformDataDir,
+  parseBooleanFlag,
   platformRegistryPath,
   processAlive,
   pidFilePath,
+  listAppMetaRecords,
   readPidRecord,
   readSharedHostPidRecord,
   readUserIndex,
   readJsonIfExists,
-  readWorkspaceRegistry,
+  readAppRegistry,
+  removeAppRegistryEntry,
   removePlatformRegistryEntry,
   removePidRecord,
   removeSharedHostPidRecord,
-  removeWorkspaceRegistryEntry,
   resolveInternalPort,
   request,
   registryPath,
-  registryRoot,
   repoRoot,
   runtimeDir,
   sharedHostHealthUrl,
   sharedHostLogFilePath,
   sharedHostPidFilePath,
   sharedHostRuntimeDir,
-  syncWorkspaceRegistryEntry,
-  userIndexPath,
-  userRoot,
+  syncAppRegistryEntry,
   syncPlatformRegistryEntry,
   appReachable,
-  webAppsRoot,
+  writeAppRegistry,
   writeSharedHostPidRecord,
-  writeWorkspaceRegistry,
   writePidRecord,
   writeJson,
 };

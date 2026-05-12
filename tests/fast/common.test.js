@@ -41,34 +41,21 @@ test("common path helpers and URLs are stable", () => {
   const token = "ABCD1234";
 
   assert.equal(common.repoRoot(), path.resolve(__dirname, "..", ".."));
-  assert.ok(common.appRoot(userName, token).endsWith(path.join("workspaces", "web-apps", userName, token)));
-  assert.equal(common.hostUrl(33333, token), "http://host:33333/ABCD1234/");
+  assert.ok(common.dataRoot().endsWith(path.join(".test-platform-data", ".lite-apps")));
+  assert.ok(common.appRoot(userName, token).endsWith(path.join(".lite-apps", "apps", token)));
+  assert.equal(common.hostUrl(33333, token), "http://you-host-name:33333/ABCD1234/");
   assert.equal(common.localUrl(33333, token), "http://127.0.0.1:33333/ABCD1234/");
   assert.ok(!Number.isNaN(Date.parse(common.isoNow())));
   assert.equal(common.SHARED_PUBLIC_PORT, 33333);
   assert.equal(common.MIN_PORT, 33334);
 });
 
-test("common resolves platform data relative to the .openclaw parent directory", () => {
-  const originalOpenclawRoot = process.env.OPENCLAW_ROOT;
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "dda-openclaw-"));
-  const openclawRoot = path.join(tempDir, ".openclaw");
-
-  try {
-    fs.mkdirSync(openclawRoot, { recursive: true });
-    process.env.OPENCLAW_ROOT = openclawRoot;
-
-    assert.equal(common.findOpenclawRoot(), openclawRoot);
-    assert.equal(common.platformDataDir(), path.join(tempDir, "platform_data"));
-    assert.equal(common.platformRegistryPath(), path.join(tempDir, "platform_data", "web-app-registry.json"));
-  } finally {
-    if (originalOpenclawRoot === undefined) {
-      delete process.env.OPENCLAW_ROOT;
-    } else {
-      process.env.OPENCLAW_ROOT = originalOpenclawRoot;
-    }
-    fs.rmSync(tempDir, { recursive: true, force: true });
-  }
+test("common resolves app registry under PLATFORM_DATA_ROOT", () => {
+  assert.equal(
+    common.platformRegistryPath(),
+    path.join(common.dataRoot(), "app-registry.json")
+  );
+  assert.equal(common.registryPath(), path.join(common.dataRoot(), "app-registry.json"));
 });
 
 test("common writes and reads JSON files", () => {
@@ -87,7 +74,12 @@ test("common writes and reads JSON files", () => {
 });
 
 test("common finds a free port in the configured range", async () => {
-  const port = await common.findFreePort(common.MIN_PORT, common.MIN_PORT + 20);
-  assert.ok(port >= common.MIN_PORT);
-  assert.ok(port <= common.MIN_PORT + 20);
+  if (!(await common.isPortFree(45000))) {
+    return;
+  }
+  const start = 45000;
+  const end = 45100;
+  const port = await common.findFreePort(start, end);
+  assert.ok(port >= start);
+  assert.ok(port <= end);
 });

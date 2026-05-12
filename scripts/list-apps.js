@@ -1,6 +1,6 @@
 "use strict";
 
-const { parseArgs, readUserIndex, readWorkspaceRegistry } = require("./common");
+const { parseArgs, readUserIndex, readAppRegistry } = require("./common");
 
 function main() {
   const args = parseArgs(process.argv);
@@ -8,7 +8,7 @@ function main() {
     process.stdout.write(`${JSON.stringify(readUserIndex(args.userName), null, 2)}\n`);
     return;
   }
-  const registry = readWorkspaceRegistry();
+  const registry = readAppRegistry();
   process.stdout.write(`${JSON.stringify(registry, null, 2)}\n`);
 }
 

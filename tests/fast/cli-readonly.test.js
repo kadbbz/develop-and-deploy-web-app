@@ -40,7 +40,7 @@ test("status-app reports a missing app without throwing", () => {
   assert.match(String(error.message), /not registered under user/);
 });
 
-test("findAppByToken only returns apps registered in the registry", () => {
+test("findAppByToken only returns apps with app metadata", () => {
   const userName = randomUserName("FASTREG");
   const token = randomToken();
   const appDir = common.appRoot(userName, token);
@@ -48,28 +48,36 @@ test("findAppByToken only returns apps registered in the registry", () => {
   common.ensureDir(appDir);
   assert.equal(common.findAppByToken(token), null);
 
-  common.writeWorkspaceRegistry({
-    users: [
+  common.writeAppRegistry({
+    apps: [
       {
-        userName,
-        apps: [
-          {
-            userName,
-            token,
-            path: `workspaces/web-apps/${userName}/${token}`,
-            port: null,
-            url: null,
-            title: "Task Tracker",
-            goal: "Registry-only app",
-            status: "initialized",
-            autoStart: true,
-            updatedAt: new Date().toISOString(),
-            appKind: "TaskTracker",
-            appLabel: "WebApp",
-          },
-        ],
+        name: token,
+        token,
+        local_path: `apps/${token}`,
+        port: null,
+        internal_port: null,
+        description: "Registry-only app",
+        created_by: userName,
+        last_modified_by: userName,
+        created_at: new Date().toISOString(),
+        last_modified_at: new Date().toISOString(),
+        is_disabled: false,
       },
     ],
+  });
+
+  assert.equal(common.findAppByToken(token), null);
+
+  common.writeJson(common.appMetaPath(userName, token), {
+    userName,
+    token,
+    title: "Task Tracker",
+    goal: "Registry-only app",
+    path: `apps/${token}`,
+    port: null,
+    internalPort: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   });
 
   assert.equal(common.findAppByToken(token).userName, userName);

@@ -16,7 +16,7 @@ const {
   writeFakeRunnableApp,
 } = require("../helpers/script-test-utils");
 
-test("init-app and scaffold-app create a workspace scaffold", async (t) => {
+test("init-app and scaffold-app create an app scaffold", async (t) => {
   t.after(() => {
     cleanupSharedHost();
   });
@@ -84,21 +84,21 @@ test("set-autostart, sync-docs, update-registry, and list-apps stay in sync", as
     token,
     status: "running",
     port: "34567",
-    url: "http://host:34567/test/",
+    url: "http://you-host-name:33333/test/",
     goal: "Updated registry goal",
     design: "Updated design summary",
   }).json;
 
   assert.equal(synced.status, "running");
   assert.equal(synced.port, 34567);
-  assert.equal(synced.url, "http://host:34567/test/");
+  assert.equal(synced.url, "http://you-host-name:33333/test/");
   assert.equal(synced.goal, "Updated registry goal");
 
   const notes = fs.readFileSync(common.appNotesPath(userName, token), "utf8");
   assert.match(notes, /Updated registry goal/);
   assert.match(notes, /Updated design summary/);
   assert.match(notes, /Auto Start[\s\S]*Disabled/);
-  assert.match(notes, /http:\/\/host:34567\/test\//);
+  assert.match(notes, /http:\/\/you-host-name:33333\/test\//);
 
   const registryResult = runScript("update-registry.js", { userName, token }).json;
   assert.equal(registryResult.userName, userName);

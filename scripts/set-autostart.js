@@ -8,7 +8,7 @@ const {
   isoNow,
   parseArgs,
   readJsonIfExists,
-  syncWorkspaceRegistryEntry,
+  syncAppRegistryEntry,
   writeJson,
 } = require("./common");
 
@@ -34,7 +34,7 @@ function main() {
     updatedAt: isoNow(),
   };
   writeJson(metaPath, next);
-  syncWorkspaceRegistryEntry(next);
+  syncAppRegistryEntry(next);
   process.stdout.write(`${JSON.stringify(next, null, 2)}\n`);
 }
 

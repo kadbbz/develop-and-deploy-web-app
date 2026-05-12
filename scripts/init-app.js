@@ -6,6 +6,7 @@ const {
   appMetaPath,
   appNotesPath,
   appRoot,
+  appsRoot,
   assertSafeUserName,
   assertSafeToken,
   deriveAppDescriptors,
@@ -16,8 +17,7 @@ const {
   parseArgs,
   readJsonIfExists,
   syncPlatformRegistryEntry,
-  syncWorkspaceRegistryEntry,
-  userRoot,
+  syncAppRegistryEntry,
   writeJson,
 } = require("./common");
 
@@ -100,7 +100,7 @@ function main() {
     throw new Error(`App directory already exists: ${appDir}`);
   }
 
-  ensureDir(userRoot(userName));
+  ensureDir(appsRoot());
   ensureDir(appDir);
 
   const now = isoNow();
@@ -116,7 +116,7 @@ function main() {
     title,
     goal,
     designSummary,
-    path: path.relative(process.cwd(), appDir).replaceAll("\\", "/"),
+    path: path.join("apps", token).replaceAll("\\", "/"),
     port: null,
     url: null,
     stack: {
@@ -125,6 +125,7 @@ function main() {
       database: "SQLite",
     },
     autoStart: true,
+    isDisabled: false,
     status: "initialized",
     appKind: descriptors.appKind,
     appLabel: descriptors.appLabel,
@@ -135,7 +136,7 @@ function main() {
   writeJson(appMetaPath(userName, token), meta);
   fs.writeFileSync(appNotesPath(userName, token), notesTemplate(meta), "utf8");
   fs.writeFileSync(aiNotesPath(userName, token), aiNotesTemplate(meta), "utf8");
-  syncWorkspaceRegistryEntry(meta);
+  syncAppRegistryEntry(meta);
   syncPlatformRegistryEntry(meta);
 
   const result = {

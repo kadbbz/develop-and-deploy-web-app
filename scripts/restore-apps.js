@@ -4,7 +4,7 @@ const { spawnSync } = require("child_process");
 const {
   extractLastJsonObject,
   parseArgs,
-  readWorkspaceRegistry,
+  readAppRegistry,
   repoRoot,
 } = require("./common");
 
@@ -28,29 +28,22 @@ function runNodeScript(scriptName, args) {
 }
 
 function flattenApps(registry, onlyUserName) {
-  const users = Array.isArray(registry.users) ? registry.users : [];
-  const apps = [];
-  for (const user of users) {
-    if (onlyUserName && user.userName !== onlyUserName) {
-      continue;
-    }
-    for (const app of Array.isArray(user.apps) ? user.apps : []) {
-      apps.push({
-        userName: user.userName,
-        token: app.token,
-        autoStart: app.autoStart !== false,
-      });
-    }
-  }
-  return apps;
+  const apps = Array.isArray(registry.apps) ? registry.apps : [];
+  return apps
+    .filter((app) => !onlyUserName || app.created_by === onlyUserName)
+    .map((app) => ({
+      userName: app.created_by,
+      token: app.token,
+      disabled: app.is_disabled === true,
+    }));
 }
 
 function main() {
   const args = parseArgs(process.argv);
   const onlyUserName = args.userName || null;
   const skipBuild = args.skipBuild ? true : false;
-  const registry = readWorkspaceRegistry();
-  const apps = flattenApps(registry, onlyUserName).filter((app) => app.autoStart);
+  const registry = readAppRegistry();
+  const apps = flattenApps(registry, onlyUserName).filter((app) => !app.disabled);
 
   const results = [];
   for (const app of apps) {

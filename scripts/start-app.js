@@ -31,7 +31,7 @@ const {
   sharedHostLogFilePath,
   sharedHostRuntimeDir,
   syncPlatformRegistryEntry,
-  syncWorkspaceRegistryEntry,
+  syncAppRegistryEntry,
   writeJson,
   writePidRecord,
   writeSharedHostPidRecord,
@@ -227,11 +227,12 @@ async function main() {
         port: SHARED_PUBLIC_PORT,
         internalPort: preferredPort,
         url: hostUrl(SHARED_PUBLIC_PORT, token),
+        isDisabled: false,
         status: "running",
         updatedAt: new Date().toISOString(),
       };
       writeJson(metaFile, next);
-      syncWorkspaceRegistryEntry(next);
+      syncAppRegistryEntry(next);
       syncPlatformRegistryEntry(next);
       process.stdout.write(
         `${JSON.stringify(
@@ -313,11 +314,12 @@ async function main() {
     port: SHARED_PUBLIC_PORT,
     internalPort,
     url: publicUrl,
+    isDisabled: false,
     status: ready ? "running" : "starting",
     updatedAt: new Date().toISOString(),
   };
   writeJson(metaFile, next);
-  syncWorkspaceRegistryEntry(next);
+  syncAppRegistryEntry(next);
   syncPlatformRegistryEntry(next);
 
   process.stdout.write(

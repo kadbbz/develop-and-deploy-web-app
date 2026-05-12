@@ -12,9 +12,10 @@ const {
   hostUrl,
   isoNow,
   parseArgs,
+  parseBooleanFlag,
   readJsonIfExists,
   syncPlatformRegistryEntry,
-  syncWorkspaceRegistryEntry,
+  syncAppRegistryEntry,
   writeJson,
 } = require("./common");
 
@@ -115,6 +116,9 @@ function main() {
   } else if (next.port) {
     next.url = hostUrl(next.port, token);
   }
+  if (Object.prototype.hasOwnProperty.call(args, "isDisabled")) {
+    next.isDisabled = parseBooleanFlag(args.isDisabled, false);
+  }
   next.updatedAt = isoNow();
 
   writeJson(metaFile, next);
@@ -148,7 +152,7 @@ function main() {
   fs.writeFileSync(notesFile, `${notes.trim()}\n`, "utf8");
   fs.writeFileSync(aiNotesPath(userName, token), aiNotesTemplate(next), "utf8");
   fs.rmSync(path.join(appRoot(userName, token), "config.json"), { force: true });
-  syncWorkspaceRegistryEntry(next);
+  syncAppRegistryEntry(next);
   syncPlatformRegistryEntry(next);
   process.stdout.write(`${JSON.stringify(next, null, 2)}\n`);
 }

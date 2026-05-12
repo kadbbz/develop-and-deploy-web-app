@@ -6,48 +6,38 @@ const {
   SHARED_PUBLIC_PORT,
   appReachable,
   assertSafeToken,
-  readWorkspaceRegistry,
+  readAppRegistry,
 } = require("./common");
 
 function flattenApps(registry) {
-  const users = Array.isArray(registry && registry.users) ? registry.users : [];
-  const apps = [];
-
-  for (const user of users) {
-    const userName = user && user.userName;
-    for (const app of Array.isArray(user && user.apps) ? user.apps : []) {
-      if (!app || !userName) {
-        continue;
-      }
-      apps.push({
-        userName,
-        token: app.token,
-        internalPort: Number.isInteger(app.internalPort) ? app.internalPort : null,
-        status: app.status || "unknown",
-      });
-    }
-  }
-
-  return apps;
+  const apps = Array.isArray(registry && registry.apps) ? registry.apps : [];
+  return apps.map((app) => ({
+    token: app.token || app.name,
+    internalPort: Number.isInteger(app.internal_port) ? app.internal_port : null,
+    disabled: app.is_disabled === true,
+  }));
 }
 
 async function resolveTarget(token) {
   assertSafeToken(token);
-  const registry = readWorkspaceRegistry();
+  const registry = readAppRegistry();
   const entry = flattenApps(registry).find((app) => app.token === token);
   if (!entry || !Number.isInteger(entry.internalPort)) {
     return null;
   }
+  if (entry.disabled) {
+    return { disabled: true, token };
+  }
 
-  const health = await appReachable(entry.internalPort, entry.userName, token);
+  const health = await appReachable(entry.internalPort, null, token);
   if (!health.ok || !health.matched) {
     return null;
   }
 
   return {
-    userName: entry.userName,
     token,
     internalPort: entry.internalPort,
+    disabled: false,
   };
 }
 
@@ -107,6 +97,13 @@ const server = http.createServer(async (req, res) => {
     res.statusCode = 500;
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.end(JSON.stringify({ ok: false, error: "target-resolution-failed", message: error.message }));
+    return;
+  }
+
+  if (target && target.disabled) {
+    res.statusCode = 403;
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.end(JSON.stringify({ ok: false, error: "app-disabled", token }));
     return;
   }
 

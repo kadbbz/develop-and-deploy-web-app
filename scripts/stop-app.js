@@ -19,7 +19,7 @@ const {
   removePidRecord,
   resolveInternalPort,
   request,
-  syncWorkspaceRegistryEntry,
+  syncAppRegistryEntry,
   writeJson,
 } = require("./common");
 
@@ -107,7 +107,7 @@ async function main() {
   removePidRecord(userName, token);
 
   const reachableAfter =
-    internalPort && (aliveBefore || stopped)
+    internalPort && aliveBefore
       ? await waitForShutdown(internalPort, userName, token)
       : internalPort
         ? await appReachable(internalPort, userName, token)
@@ -119,11 +119,12 @@ async function main() {
       port: publicPort || meta.port || null,
       internalPort: internalPort || meta.internalPort || null,
       url: publicPort ? hostUrl(publicPort, token) : meta.url,
+      isDisabled: true,
       status: reachableAfter.ok ? "unknown" : "stopped",
       updatedAt: isoNow(),
     };
     writeJson(appMetaPath(userName, token), next);
-    syncWorkspaceRegistryEntry(next);
+    syncAppRegistryEntry(next);
   }
 
   process.stdout.write(

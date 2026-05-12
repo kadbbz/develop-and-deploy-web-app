@@ -8,11 +8,11 @@ const {
   assertRegisteredOwnership,
   assertSafeUserName,
   assertSafeToken,
+  appsRoot,
   parseArgs,
   readJsonIfExists,
   removePlatformRegistryEntry,
-  removeWorkspaceRegistryEntry,
-  userRoot,
+  removeAppRegistryEntry,
 } = require("./common");
 
 function runStop(userName, token) {
@@ -40,14 +40,14 @@ function main() {
   const existed = fs.existsSync(appDir);
 
   runStop(userName, token);
-  const workspaceRegistryRemoved = removeWorkspaceRegistryEntry(userName, token);
+  const appRegistryRemoved = removeAppRegistryEntry(userName, token);
   const platformRegistryRemoved = removePlatformRegistryEntry(userName, token);
   fs.rmSync(appDir, { recursive: true, force: true });
 
-  if (fs.existsSync(userRoot(userName))) {
-    const remaining = fs.readdirSync(userRoot(userName), { withFileTypes: true });
+  if (fs.existsSync(appsRoot())) {
+    const remaining = fs.readdirSync(appsRoot(), { withFileTypes: true });
     if (remaining.length === 0) {
-      fs.rmSync(userRoot(userName), { recursive: true, force: true });
+      fs.rmSync(appsRoot(), { recursive: true, force: true });
     }
   }
 
@@ -58,8 +58,8 @@ function main() {
         token,
         name: meta ? meta.title : null,
         existed,
-        removed: existed || workspaceRegistryRemoved || platformRegistryRemoved.removed,
-        workspaceRegistryRemoved,
+        removed: existed || appRegistryRemoved || platformRegistryRemoved.removed,
+        appRegistryRemoved,
         platformRegistryRemoved: platformRegistryRemoved.removed,
       },
       null,

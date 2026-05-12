@@ -17,7 +17,8 @@ If the user says "轻应用" or "LiteApp", treat that as an explicit request to 
 
 ## Operating Rules
 
-- Create the generated web project under `workspaces/web-apps/{userName}/{token}`.
+- Resolve the LiteApp root as `PLATFORM_DATA_ROOT/.lite-apps` when `PLATFORM_DATA_ROOT` exists; otherwise use `~/.lite-apps`.
+- Create the generated web project under `.lite-apps/apps/{token}`.
 - Treat `{token}` as an 8-character random identifier made only of uppercase letters and digits.
 - Ensure every new `{token}` is globally unique across all generated apps.
 - If `userName` is available in the runtime context, use it directly. If it is not discoverable from the environment or user request, ask the user before scaffolding.
@@ -37,9 +38,12 @@ If the user says "轻应用" or "LiteApp", treat that as an explicit request to 
 - Make the app work under the subpath `/{token}/`, not just at `/`.
 - Expose all LiteApps through the shared public port `33333`.
 - Assign each app process a dedicated internal port in the inclusive range `33334-39999`. Start at `33334` and increment until a free port is found.
-- Treat the final external URL reported to the user as `<web-app-url-prefix>:33333/{token}`.
+- Treat the final external URL reported to the user as `http://you-host-name:33333/{token}/`.
 - Maintain machine-readable and human-readable records so current users and apps can be queried without scanning source files manually.
-- Keep `../platform_data/web-app-registry.json` synchronized relative to the `.openclaw` root directory. Each record must include `name`, `token`, `file_path`, `port`, `created_at`, `modified_at`, and `user_name`.
+- Keep `.lite-apps/app-registry.json` synchronized. Each record must include `name`, `token`, `local_path`, `port`, `internal_port`, `description`, `created_by`, `last_modified_by`, `created_at`, `last_modified_at`, and `is_disabled`.
+- In the registry, `name` must equal `token`, and `created_by` is the owner `userName`.
+- When `is_disabled=true`, the shared LiteApp host must stop routing traffic for that app.
+- `stop-app.js` means set `is_disabled=true`; `start-app.js` means set `is_disabled=false`.
 - Prefer the bundled Node scripts in `scripts/` for app initialization, internal port allocation, shared-host startup, registry maintenance, shutdown, and doc synchronization instead of re-implementing those flows ad hoc.
 - Keep deployment automation local and explicit. Do not add scripts that fetch remote code, manage secrets, alter unrelated system state, or attempt privilege escalation.
 - Support restart recovery through registry-driven restore scripts, but do not silently install OS startup hooks or scheduled tasks.
@@ -47,7 +51,7 @@ If the user says "轻应用" or "LiteApp", treat that as an explicit request to 
 ## Workflow
 
 1. Inspect the workspace before changing anything.
-2. Resolve the output directory as `workspaces/web-apps/{userName}/{token}` and create it if needed.
+2. Resolve the output directory as `.lite-apps/apps/{token}` and create it if needed.
 3. Initialize the app folder and base app documents with `scripts/init-app.js`.
 4. Decide whether to extend an existing app in that target directory or scaffold a new one.
 5. Create a minimal but complete app:
@@ -86,7 +90,7 @@ If the user says "轻应用" or "LiteApp", treat that as an explicit request to 
 
 - Do not stop after scaffolding files. The task is incomplete until the app is actually runnable from the generated folder and a final URL has been produced or a concrete blocker has been confirmed.
 - Prefer exposing the production build, not the Vite dev server, so the final URL reflects the real integrated app.
-- Compute the final access URL for user-facing output as `<web-app-url-prefix>:33333/{token}`.
+- Compute the final access URL for user-facing output as `http://you-host-name:33333/{token}/`.
 - Keep the external port fixed at `33333`.
 - Select the internal app port by scanning from `33334` upward and using the first free port up to `39999`.
 - Ensure frontend asset URLs, router behavior, and API calls all work when mounted beneath that subpath.
@@ -96,12 +100,12 @@ If the user says "轻应用" or "LiteApp", treat that as an explicit request to 
 ## Queryability Rules
 
 - Make it easy to answer "which users exist?" and "which apps exist?" without launching app code.
-- Maintain a root registry and per-user indices with `scripts/update-registry.js`.
+- Maintain `.lite-apps/app-registry.json` with `scripts/update-registry.js`.
 - Keep one machine-readable app metadata file and one human-readable app notes file in every app directory, managed through `scripts/init-app.js` and `scripts/sync-docs.js`.
 - Keep `.ai.md` in every app directory to record user requirements and AI design notes.
 - Do not keep `config.json` inside generated app directories.
 - Whenever the app is changed, update the corresponding metadata and notes in the same turn.
-- When the user asks to inspect existing apps, answer from the registry files first and only inspect app directories when details are missing or stale.
+- When the user asks to inspect existing apps, answer from `app-registry.json` first and only inspect app directories when details are missing or stale.
 
 ## Delivery Requirements
 
@@ -111,7 +115,7 @@ Always finish with:
   `Id: {token}`
   `Name: {appName}`
   `Description: {appSummary}`
-  `Url template: <web-app-url-prefix>:33333/{token}  `
+  `Url template: http://you-host-name:33333/{token}/  `
 - do not omit any of the four fields above, even if other delivery details are also included
 - keep the field names exactly as written above
 - if additional sections are included, place this four-field block at the end of the response
@@ -120,7 +124,7 @@ Always finish with:
 - the app summary
 - the main files or folders created or updated
 - install and run commands
-- the final URL in the form `<web-app-url-prefix>:33333/{token}`
+- the final URL in the form `http://you-host-name:33333/{token}/`
 - the assigned public port `33333` and the internal app port
 - the registry and app-doc files that were created or updated
 - any limitations, such as the URL depending on the local process remaining alive

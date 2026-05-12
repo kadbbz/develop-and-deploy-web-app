@@ -22,13 +22,12 @@ function writeJson(filePath, data) {
 
 function rootPackageJson() {
   return {
-    name: "web-app-workspace",
+    name: "lite-app",
     private: true,
-    workspaces: ["client", "server"],
     scripts: {
-      dev: 'npm run dev -w server',
-      build: "npm run build -w client && npm run build -w server",
-      start: "npm run start -w server",
+      dev: "npm --prefix server run dev",
+      build: "npm --prefix client run build && npm --prefix server run build",
+      start: "npm --prefix server run start",
     },
   };
 }

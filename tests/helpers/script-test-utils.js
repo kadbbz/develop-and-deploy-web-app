@@ -7,11 +7,12 @@ const { spawnSync } = require("child_process");
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 process.env.OPENCLAW_ROOT = path.join(repoRoot, ".test-openclaw", ".openclaw");
+process.env.PLATFORM_DATA_ROOT = path.join(repoRoot, ".test-platform-data");
 const common = require(path.join(repoRoot, "scripts", "common.js"));
 
 function ensurePlatformDataDir() {
-  common.ensureDir(common.findOpenclawRoot());
-  common.ensureDir(common.platformDataDir());
+  common.ensureDir(common.dataRoot());
+  common.ensureDir(common.appsRoot());
 }
 
 function randomUserName(prefix = "TEST") {
@@ -258,14 +259,14 @@ async function cleanupSession(userName, token, extraPorts = []) {
   const appDir = common.appRoot(userName, token);
   await waitForPathRemoval(appDir);
   await removePathWithRetry(appDir);
-  fs.rmSync(common.userIndexPath(userName), { force: true });
-  common.removeWorkspaceRegistryEntry(userName, token);
 
-  const userDir = common.userRoot(userName);
-  if (fs.existsSync(userDir)) {
-    const remaining = fs.readdirSync(userDir, { withFileTypes: true });
+  common.removeAppRegistryEntry(userName, token);
+
+  const appsDir = common.appsRoot();
+  if (fs.existsSync(appsDir)) {
+    const remaining = fs.readdirSync(appsDir, { withFileTypes: true });
     if (remaining.length === 0) {
-      await removePathWithRetry(userDir);
+      await removePathWithRetry(appsDir);
     }
   }
 }

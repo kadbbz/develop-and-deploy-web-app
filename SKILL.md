@@ -37,7 +37,7 @@ If the user says "轻应用" or "LiteApp", treat that as an explicit request to 
 - Make the app work under the subpath `/{token}/`, not just at `/`.
 - Expose all LiteApps through the shared public port `33333`.
 - Assign each app process a dedicated internal port in the inclusive range `33334-39999`. Start at `33334` and increment until a free port is found.
-- Treat the final external URL as `<web-app-url-prefix>:33333/{token}/`.
+- Treat the final external URL reported to the user as `<web-app-url-prefix>:33333/{token}`.
 - Maintain machine-readable and human-readable records so current users and apps can be queried without scanning source files manually.
 - Keep `../platform_data/web-app-registry.json` synchronized relative to the `.openclaw` root directory. Each record must include `name`, `token`, `file_path`, `port`, `created_at`, `modified_at`, and `user_name`.
 - Prefer the bundled Node scripts in `scripts/` for app initialization, internal port allocation, shared-host startup, registry maintenance, shutdown, and doc synchronization instead of re-implementing those flows ad hoc.
@@ -63,7 +63,7 @@ If the user says "轻应用" or "LiteApp", treat that as an explicit request to 
 10. If deployment steps are run separately, run them in order: `install-app.js` -> `build-app.js` -> `start-app.js` -> `sync-docs.js` -> `update-registry.js`.
 11. Use `status-app.js` and `restart-app.js` for lifecycle checks and controlled restarts.
 12. Use `restore-apps.js` for post-reboot recovery, and `bootstrap-host.js` to print the command that a host-level startup mechanism should run.
-13. Return the URL together with the local commands and any important caveats.
+13. Return the required final app summary block together with the local commands and any important caveats.
 
 ## Implementation Defaults
 
@@ -86,8 +86,7 @@ If the user says "轻应用" or "LiteApp", treat that as an explicit request to 
 
 - Do not stop after scaffolding files. The task is incomplete until the app is actually runnable from the generated folder and a final URL has been produced or a concrete blocker has been confirmed.
 - Prefer exposing the production build, not the Vite dev server, so the final URL reflects the real integrated app.
-- Compute the final URL as `<web-app-url-prefix>:33333/{token}/`.
-- When returning the final URL in the skill output, append exactly two trailing spaces after the URL.
+- Compute the final access URL for user-facing output as `<web-app-url-prefix>:33333/{token}`.
 - Keep the external port fixed at `33333`.
 - Select the internal app port by scanning from `33334` upward and using the first free port up to `39999`.
 - Ensure frontend asset URLs, router behavior, and API calls all work when mounted beneath that subpath.
@@ -108,11 +107,20 @@ If the user says "轻应用" or "LiteApp", treat that as an explicit request to 
 
 Always finish with:
 
+- a fixed, explicit final app info block with all four fields present and non-empty:
+  `Id: {token}`
+  `Name: {appName}`
+  `Description: {appSummary}`
+  `Url template: <web-app-url-prefix>:33333/{token}  `
+- do not omit any of the four fields above, even if other delivery details are also included
+- keep the field names exactly as written above
+- if additional sections are included, place this four-field block at the end of the response
+
 - the generated project path
 - the app summary
 - the main files or folders created or updated
 - install and run commands
-- the final URL in the form `<web-app-url-prefix>:33333/{token}/  ` the url should be followed by exactly two trailing spaces
+- the final URL in the form `<web-app-url-prefix>:33333/{token}`
 - the assigned public port `33333` and the internal app port
 - the registry and app-doc files that were created or updated
 - any limitations, such as the URL depending on the local process remaining alive

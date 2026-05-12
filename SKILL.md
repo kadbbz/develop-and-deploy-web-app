@@ -1,6 +1,6 @@
 ---
 name: develop-and-deploy-web-app
-description: Build, run, and share a simple full-stack web application with a TypeScript Express backend, React frontend, and SQLite database. Use when a user wants a working web app scaffolded in the current workspace, started locally, and exposed through a public URL for demos, testing, or review.
+description: Build, run, and share a simple full-stack web application with a TypeScript Express backend, React frontend, and SQLite database. Use when a user wants a working web app or explicitly asks for a LiteApp / 轻应用 scaffolded in the current workspace, started locally, and exposed through a public URL for demos, testing, or review.
 metadata:
   openclaw:
     requires:
@@ -13,12 +13,14 @@ metadata:
 
 Build a simple full-stack web app in the current workspace, run it locally as its own isolated process, and provide a URL that another person can open from outside the machine.
 
+If the user says "轻应用" or "LiteApp", treat that as an explicit request to use this skill.
+
 ## Operating Rules
 
-- Create the generated web project under `workspaces/web-apps/{sessionId}/{token}`.
+- Create the generated web project under `workspaces/web-apps/{userName}/{token}`.
 - Treat `{token}` as an 8-character random identifier made only of uppercase letters and digits.
 - Ensure every new `{token}` is globally unique across all generated apps.
-- If `sessionId` is available in the runtime context, use it directly. If it is not discoverable from the environment or user request, ask the user before scaffolding.
+- If `userName` is available in the runtime context, use it directly. If it is not discoverable from the environment or user request, ask the user before scaffolding.
 - Do not scaffold the app at the repository root unless the user explicitly overrides the output rule.
 - Treat `{token}` as both the folder name and the URL segment.
 - Run each web app in its own isolated Node.js process. Do not rely on one shared Node.js host process to serve multiple app folders.
@@ -34,8 +36,8 @@ Build a simple full-stack web app in the current workspace, run it locally as it
 - Make the app work under the subpath `/{token}/`, not just at `/`.
 - Assign each app a dedicated port in the inclusive range `33333-39999`. Start at `33333` and increment until a free port is found.
 - Treat the final external URL as `<web-app-url-prefix>:{port}/{token}/`.
-- Maintain machine-readable and human-readable records so current sessions and apps can be queried without scanning source files manually.
-- Keep `/var/platform_data/web-app-registry.json` synchronized with all created apps. Each record must include `name`, `token`, `file_path`, `port`, `created_at`, `modified_at`, and `session`.
+- Maintain machine-readable and human-readable records so current users and apps can be queried without scanning source files manually.
+- Keep `/var/platform_data/web-app-registry.json` synchronized with all created apps. Each record must include `name`, `token`, `file_path`, `port`, `created_at`, `modified_at`, and `user_name`.
 - Prefer the bundled Node scripts in `scripts/` for app initialization, port allocation, registry maintenance, startup, shutdown, and doc synchronization instead of re-implementing those flows ad hoc.
 - Keep deployment automation local and explicit. Do not add scripts that fetch remote code, manage secrets, alter unrelated system state, or attempt privilege escalation.
 - Support restart recovery through registry-driven restore scripts, but do not silently install OS startup hooks or scheduled tasks.
@@ -43,7 +45,7 @@ Build a simple full-stack web app in the current workspace, run it locally as it
 ## Workflow
 
 1. Inspect the workspace before changing anything.
-2. Resolve the output directory as `workspaces/web-apps/{sessionId}/{token}` and create it if needed.
+2. Resolve the output directory as `workspaces/web-apps/{userName}/{token}` and create it if needed.
 3. Initialize the app folder and base app documents with `scripts/init-app.js`.
 4. Decide whether to extend an existing app in that target directory or scaffold a new one.
 5. Create a minimal but complete app:
@@ -82,6 +84,7 @@ Build a simple full-stack web app in the current workspace, run it locally as it
 - Do not stop after scaffolding files. The task is incomplete until the app is actually runnable from the generated folder and a final URL has been produced or a concrete blocker has been confirmed.
 - Prefer exposing the production build, not the Vite dev server, so the final URL reflects the real integrated app.
 - Compute the final URL as `<web-app-url-prefix>:{port}/{token}/`.
+- When returning the final URL in the skill output, append exactly two trailing spaces after the URL.
 - Select `{port}` by scanning from `33333` upward and using the first free port up to `39999`.
 - Ensure frontend asset URLs, router behavior, and API calls all work when mounted beneath that subpath.
 - Keep each app isolated in its own process and directory. Do not multiplex multiple apps through one long-running server.
@@ -89,8 +92,8 @@ Build a simple full-stack web app in the current workspace, run it locally as it
 
 ## Queryability Rules
 
-- Make it easy to answer "which sessions exist?" and "which apps exist?" without launching app code.
-- Maintain a root registry and per-session indices with `scripts/update-registry.js`.
+- Make it easy to answer "which users exist?" and "which apps exist?" without launching app code.
+- Maintain a root registry and per-user indices with `scripts/update-registry.js`.
 - Keep one machine-readable app metadata file and one human-readable app notes file in every app directory, managed through `scripts/init-app.js` and `scripts/sync-docs.js`.
 - Keep `.ai.md` in every app directory to record user requirements and AI design notes.
 - Do not keep `config.json` inside generated app directories.
@@ -105,7 +108,7 @@ Always finish with:
 - the app summary
 - the main files or folders created or updated
 - install and run commands
-- the final URL in the form `<web-app-url-prefix>:{port}/{token}/`
+- the final URL in the form `<web-app-url-prefix>:{port}/{token}/  ` the url should be followed by exactly two trailing spaces
 - the assigned port
 - the registry and app-doc files that were created or updated
 - any limitations, such as the URL depending on the local process remaining alive
@@ -115,3 +118,5 @@ Always finish with:
 - "Build me a simple task tracker and give me a public URL."
 - "Create a small React + Express + SQLite app for note taking and run it."
 - "Set up a demo web app in this folder, start it, and share an external link."
+- "Create a 轻应用 for internal data entry."
+- "Build a LiteApp for this workflow and run it locally."

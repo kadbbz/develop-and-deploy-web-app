@@ -2,7 +2,7 @@
 
 const { spawnSync } = require("child_process");
 const path = require("path");
-const { appRoot, assertSafeSessionId, assertSafeToken, parseArgs } = require("./common");
+const { appRoot, assertRegisteredOwnership, assertSafeUserName, assertSafeToken, parseArgs } = require("./common");
 
 function npmCommandArgs(command) {
   if (process.platform === "win32") {
@@ -19,13 +19,14 @@ function npmCommandArgs(command) {
 
 function main() {
   const args = parseArgs(process.argv);
-  const sessionId = args.sessionId;
+  const userName = args.userName;
   const token = args.token;
 
-  assertSafeSessionId(sessionId);
+  assertSafeUserName(userName);
   assertSafeToken(token);
+  assertRegisteredOwnership(userName, token);
 
-  const cwd = appRoot(sessionId, token);
+  const cwd = appRoot(userName, token);
   const npmCall = npmCommandArgs("install");
   const result = spawnSync(npmCall.file, npmCall.args, {
     cwd,
@@ -44,7 +45,7 @@ function main() {
   process.stdout.write(
     `${JSON.stringify(
       {
-        sessionId,
+        userName,
         token,
         cwd: path.relative(process.cwd(), cwd).replaceAll("\\", "/"),
         installed: true,

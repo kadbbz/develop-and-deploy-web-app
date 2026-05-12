@@ -4,8 +4,7 @@ const { spawnSync } = require("child_process");
 const {
   extractLastJsonObject,
   parseArgs,
-  readJsonIfExists,
-  registryPath,
+  readWorkspaceRegistry,
   repoRoot,
 } = require("./common");
 
@@ -28,16 +27,16 @@ function runNodeScript(scriptName, args) {
   };
 }
 
-function flattenApps(registry, onlySessionId) {
-  const sessions = Array.isArray(registry.sessions) ? registry.sessions : [];
+function flattenApps(registry, onlyUserName) {
+  const users = Array.isArray(registry.users) ? registry.users : [];
   const apps = [];
-  for (const session of sessions) {
-    if (onlySessionId && session.sessionId !== onlySessionId) {
+  for (const user of users) {
+    if (onlyUserName && user.userName !== onlyUserName) {
       continue;
     }
-    for (const app of Array.isArray(session.apps) ? session.apps : []) {
+    for (const app of Array.isArray(user.apps) ? user.apps : []) {
       apps.push({
-        sessionId: session.sessionId,
+        userName: user.userName,
         token: app.token,
         autoStart: app.autoStart !== false,
       });
@@ -48,14 +47,14 @@ function flattenApps(registry, onlySessionId) {
 
 function main() {
   const args = parseArgs(process.argv);
-  const onlySessionId = args.sessionId || null;
+  const onlyUserName = args.userName || null;
   const skipBuild = args.skipBuild ? true : false;
-  const registry = readJsonIfExists(registryPath(), { sessions: [] });
-  const apps = flattenApps(registry, onlySessionId).filter((app) => app.autoStart);
+  const registry = readWorkspaceRegistry();
+  const apps = flattenApps(registry, onlyUserName).filter((app) => app.autoStart);
 
   const results = [];
   for (const app of apps) {
-    const deployArgs = ["--sessionId", app.sessionId, "--token", app.token];
+    const deployArgs = ["--userName", app.userName, "--token", app.token];
     if (skipBuild) {
       deployArgs.push("--skipBuild");
     }

@@ -3,7 +3,8 @@
 const {
   appReachable,
   appMetaPath,
-  assertSafeSessionId,
+  assertRegisteredOwnership,
+  assertSafeUserName,
   assertSafeToken,
   parseArgs,
   processAlive,
@@ -14,30 +15,31 @@ const {
 
 async function main() {
   const args = parseArgs(process.argv);
-  const sessionId = args.sessionId;
+  const userName = args.userName;
   const token = args.token;
 
-  assertSafeSessionId(sessionId);
+  assertSafeUserName(userName);
   assertSafeToken(token);
+  assertRegisteredOwnership(userName, token);
 
-  const meta = readJsonIfExists(appMetaPath(sessionId, token), null);
-  const pidRecord = readPidRecord(sessionId, token);
+  const meta = readJsonIfExists(appMetaPath(userName, token), null);
+  const pidRecord = readPidRecord(userName, token);
   const pid = pidRecord && Number.isInteger(pidRecord.pid) ? pidRecord.pid : null;
   const alive = processAlive(pid);
   const portFromPid = pidRecord && Number.isInteger(pidRecord.port) ? pidRecord.port : null;
   const portFromMeta = meta && Number.isInteger(meta.port) ? meta.port : null;
   const port = portFromPid || portFromMeta || null;
-  const health = port ? await appReachable(port, sessionId, token) : { ok: false, statusCode: 0 };
+  const health = port ? await appReachable(port, userName, token) : { ok: false, statusCode: 0 };
   const orphaned = !alive && health.matched;
   const consistent = alive ? health.matched : !health.matched;
   if (!alive && pidRecord) {
-    removePidRecord(sessionId, token);
+    removePidRecord(userName, token);
   }
 
   process.stdout.write(
     `${JSON.stringify(
       {
-        sessionId,
+        userName,
         token,
         pid,
         alive,

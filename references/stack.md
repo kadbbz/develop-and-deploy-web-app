@@ -56,7 +56,7 @@ If `concurrently` is not desired, equivalent scripts that use `npm --prefix` are
 - Keep schema initialization in a small dedicated module such as `server/src/db.ts`.
 - Create the database file automatically on first run.
 - Keep the schema minimal and local to the app.
-- Keep all generated artifacts inside the assigned app folder under `workspaces/web-apps/{sessionId}/{token}`.
+- Keep all generated artifacts inside the assigned app folder under `workspaces/web-apps/{userName}/{token}`.
 - Keep app-local metadata and notes in the app folder so each app remains independently inspectable.
 
 ## Minimum Product Quality

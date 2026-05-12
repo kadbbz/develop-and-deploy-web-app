@@ -6,22 +6,23 @@ const {
   appMetaPath,
   appNotesPath,
   appRoot,
-  assertSafeSessionId,
+  assertSafeUserName,
   assertSafeToken,
+  deriveAppDescriptors,
   ensureDir,
   findAppByToken,
   generateToken,
-  hostUrl,
   isoNow,
   parseArgs,
   readJsonIfExists,
-  sessionRoot,
   syncPlatformRegistryEntry,
+  syncWorkspaceRegistryEntry,
+  userRoot,
   writeJson,
 } = require("./common");
 
-function aiNotesPath(sessionId, token) {
-  return path.join(appRoot(sessionId, token), ".ai.md");
+function aiNotesPath(userName, token) {
+  return path.join(appRoot(userName, token), ".ai.md");
 }
 
 function notesTemplate(meta) {
@@ -80,13 +81,13 @@ function aiNotesTemplate(meta) {
 
 function main() {
   const args = parseArgs(process.argv);
-  const sessionId = args.sessionId;
+  const userName = args.userName;
   const requestedToken = args.token;
-  const title = args.title || "Simple Web App";
+  const title = args.title || "Web App";
   const goal = args.goal || "Build and run a simple full-stack web app.";
   const designSummary = args.design || "Use the skill defaults and Huashu-inspired web styling.";
 
-  assertSafeSessionId(sessionId);
+  assertSafeUserName(userName);
   const token = requestedToken || generateToken();
   assertSafeToken(token);
   const tokenOwner = findAppByToken(token);
@@ -94,17 +95,23 @@ function main() {
     throw new Error(`Token already exists: ${token}`);
   }
 
-  const appDir = appRoot(sessionId, token);
+  const appDir = appRoot(userName, token);
   if (fs.existsSync(appDir)) {
     throw new Error(`App directory already exists: ${appDir}`);
   }
 
-  ensureDir(sessionRoot(sessionId));
+  ensureDir(userRoot(userName));
   ensureDir(appDir);
 
   const now = isoNow();
+  const descriptors = deriveAppDescriptors({
+    title,
+    goal,
+    appKind: args.appKind,
+    appLabel: args.appLabel,
+  });
   const meta = {
-    sessionId,
+    userName,
     token,
     title,
     goal,
@@ -119,20 +126,23 @@ function main() {
     },
     autoStart: true,
     status: "initialized",
+    appKind: descriptors.appKind,
+    appLabel: descriptors.appLabel,
     createdAt: now,
     updatedAt: now,
   };
 
-  writeJson(appMetaPath(sessionId, token), meta);
-  fs.writeFileSync(appNotesPath(sessionId, token), notesTemplate(meta), "utf8");
-  fs.writeFileSync(aiNotesPath(sessionId, token), aiNotesTemplate(meta), "utf8");
+  writeJson(appMetaPath(userName, token), meta);
+  fs.writeFileSync(appNotesPath(userName, token), notesTemplate(meta), "utf8");
+  fs.writeFileSync(aiNotesPath(userName, token), aiNotesTemplate(meta), "utf8");
+  syncWorkspaceRegistryEntry(meta);
   syncPlatformRegistryEntry(meta);
 
   const result = {
-    sessionId,
+    userName,
     token,
     appDir,
-    meta: readJsonIfExists(appMetaPath(sessionId, token), meta),
+    meta: readJsonIfExists(appMetaPath(userName, token), meta),
   };
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }

@@ -5,7 +5,8 @@ const { spawnSync } = require("child_process");
 const {
   appReachable,
   appMetaPath,
-  assertSafeSessionId,
+  assertRegisteredOwnership,
+  assertSafeUserName,
   assertSafeToken,
   hostUrl,
   isoNow,
@@ -14,6 +15,7 @@ const {
   readPidRecord,
   readJsonIfExists,
   removePidRecord,
+  syncWorkspaceRegistryEntry,
   writeJson,
 } = require("./common");
 
@@ -41,29 +43,30 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitForShutdown(port, sessionId, token, attempts = 20) {
+async function waitForShutdown(port, userName, token, attempts = 20) {
   for (let i = 0; i < attempts; i += 1) {
     // eslint-disable-next-line no-await-in-loop
-    const reachable = await appReachable(port, sessionId, token);
+    const reachable = await appReachable(port, userName, token);
     if (!reachable.matched) {
       return { ok: false, statusCode: reachable.statusCode || 0, matched: false };
     }
     // eslint-disable-next-line no-await-in-loop
     await wait(250);
   }
-  return appReachable(port, sessionId, token);
+  return appReachable(port, userName, token);
 }
 
 async function main() {
   const args = parseArgs(process.argv);
-  const sessionId = args.sessionId;
+  const userName = args.userName;
   const token = args.token;
 
-  assertSafeSessionId(sessionId);
+  assertSafeUserName(userName);
   assertSafeToken(token);
+  assertRegisteredOwnership(userName, token);
 
-  const pidRecord = readPidRecord(sessionId, token);
-  const meta = readJsonIfExists(appMetaPath(sessionId, token), null);
+  const pidRecord = readPidRecord(userName, token);
+  const meta = readJsonIfExists(appMetaPath(userName, token), null);
   const pid =
     pidRecord &&
     Number.isInteger(pidRecord.pid)
@@ -83,22 +86,24 @@ async function main() {
 
   const aliveBefore = processAlive(pid);
   const stopped = aliveBefore ? stopPid(pid) : false;
-  removePidRecord(sessionId, token);
+  removePidRecord(userName, token);
 
   const reachableAfter =
     port && (aliveBefore || stopped)
-      ? await waitForShutdown(port, sessionId, token)
+      ? await waitForShutdown(port, userName, token)
       : port
-        ? await appReachable(port, sessionId, token)
+        ? await appReachable(port, userName, token)
         : { ok: false, statusCode: 0 };
   if (meta) {
-    writeJson(appMetaPath(sessionId, token), {
+    const next = {
       ...meta,
       port: port || meta.port || null,
       url: port ? hostUrl(port, token) : meta.url,
       status: reachableAfter.ok ? "unknown" : "stopped",
       updatedAt: isoNow(),
-    });
+    };
+    writeJson(appMetaPath(userName, token), next);
+    syncWorkspaceRegistryEntry(next);
   }
 
   process.stdout.write(

@@ -6,18 +6,20 @@ const {
   appMetaPath,
   appNotesPath,
   appRoot,
-  assertSafeSessionId,
+  assertRegisteredOwnership,
+  assertSafeUserName,
   assertSafeToken,
   hostUrl,
   isoNow,
   parseArgs,
   readJsonIfExists,
   syncPlatformRegistryEntry,
+  syncWorkspaceRegistryEntry,
   writeJson,
 } = require("./common");
 
-function aiNotesPath(sessionId, token) {
-  return path.join(appRoot(sessionId, token), ".ai.md");
+function aiNotesPath(userName, token) {
+  return path.join(appRoot(userName, token), ".ai.md");
 }
 
 function upsertSection(markdown, heading, body) {
@@ -75,14 +77,15 @@ function aiNotesTemplate(meta) {
 
 function main() {
   const args = parseArgs(process.argv);
-  const sessionId = args.sessionId;
+  const userName = args.userName;
   const token = args.token;
 
-  assertSafeSessionId(sessionId);
+  assertSafeUserName(userName);
   assertSafeToken(token);
+  assertRegisteredOwnership(userName, token);
 
-  const metaFile = appMetaPath(sessionId, token);
-  const notesFile = appNotesPath(sessionId, token);
+  const metaFile = appMetaPath(userName, token);
+  const notesFile = appNotesPath(userName, token);
   const previous = readJsonIfExists(metaFile, null);
   if (!previous) {
     throw new Error(`Missing app metadata: ${metaFile}`);
@@ -140,8 +143,9 @@ function main() {
   notes = upsertSection(notes, "Change log", mergedEntries);
 
   fs.writeFileSync(notesFile, `${notes.trim()}\n`, "utf8");
-  fs.writeFileSync(aiNotesPath(sessionId, token), aiNotesTemplate(next), "utf8");
-  fs.rmSync(path.join(appRoot(sessionId, token), "config.json"), { force: true });
+  fs.writeFileSync(aiNotesPath(userName, token), aiNotesTemplate(next), "utf8");
+  fs.rmSync(path.join(appRoot(userName, token), "config.json"), { force: true });
+  syncWorkspaceRegistryEntry(next);
   syncPlatformRegistryEntry(next);
   process.stdout.write(`${JSON.stringify(next, null, 2)}\n`);
 }

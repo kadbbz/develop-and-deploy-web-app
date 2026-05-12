@@ -2,7 +2,8 @@
 
 const { spawnSync } = require("child_process");
 const {
-  assertSafeSessionId,
+  assertRegisteredOwnership,
+  assertSafeUserName,
   assertSafeToken,
   extractLastJsonObject,
   parseArgs,
@@ -24,15 +25,16 @@ function run(scriptName, args, allowFailure = false) {
 
 function main() {
   const args = parseArgs(process.argv);
-  const sessionId = args.sessionId;
+  const userName = args.userName;
   const token = args.token;
 
-  assertSafeSessionId(sessionId);
+  assertSafeUserName(userName);
   assertSafeToken(token);
+  assertRegisteredOwnership(userName, token);
 
   const stopped = run(
     "scripts/stop-app.js",
-    ["--sessionId", sessionId, "--token", token],
+    ["--userName", userName, "--token", token],
     true
   );
   if (stopped && stopped.reachableAfter) {
@@ -40,7 +42,7 @@ function main() {
       `Refusing to restart while the previous instance is still reachable on port ${stopped.port}`
     );
   }
-  const deployArgs = ["--sessionId", sessionId, "--token", token];
+  const deployArgs = ["--userName", userName, "--token", token];
   if (args.skipBuild) {
     deployArgs.push("--skipBuild");
   }

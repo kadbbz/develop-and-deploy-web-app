@@ -7,7 +7,8 @@ const {
   appReachable,
   appMetaPath,
   appRoot,
-  assertSafeSessionId,
+  assertRegisteredOwnership,
+  assertSafeUserName,
   assertSafeToken,
   ensureDir,
   findFreePort,
@@ -22,6 +23,7 @@ const {
   removePidRecord,
   runtimeDir,
   syncPlatformRegistryEntry,
+  syncWorkspaceRegistryEntry,
   writePidRecord,
   writeJson,
 } = require("./common");
@@ -102,10 +104,10 @@ function resolveStartCommand(serverDir, packageJsonPath) {
   };
 }
 
-async function waitForReady(port, sessionId, token, attempts = 20) {
+async function waitForReady(port, userName, token, attempts = 20) {
   for (let i = 0; i < attempts; i += 1) {
     // eslint-disable-next-line no-await-in-loop
-    const response = await appReachable(port, sessionId, token);
+    const response = await appReachable(port, userName, token);
     if (response.ok && response.matched) {
       return true;
     }
@@ -117,34 +119,35 @@ async function waitForReady(port, sessionId, token, attempts = 20) {
 
 async function main() {
   const args = parseArgs(process.argv);
-  const sessionId = args.sessionId;
+  const userName = args.userName;
   const token = args.token;
 
-  assertSafeSessionId(sessionId);
+  assertSafeUserName(userName);
   assertSafeToken(token);
+  assertRegisteredOwnership(userName, token);
 
-  const metaFile = appMetaPath(sessionId, token);
+  const metaFile = appMetaPath(userName, token);
   const meta = readJsonIfExists(metaFile, null);
   if (!meta) {
     throw new Error(`Missing APP-META.json: ${metaFile}`);
   }
 
-  const appDir = appRoot(sessionId, token);
+  const appDir = appRoot(userName, token);
   const serverDir = path.join(appDir, "server");
   const packageJson = path.join(serverDir, "package.json");
   if (!fs.existsSync(packageJson)) {
     throw new Error(`Expected server package.json at ${packageJson}`);
   }
 
-  ensureDir(runtimeDir(sessionId, token));
-  const pidRecord = readPidRecord(sessionId, token);
+  ensureDir(runtimeDir(userName, token));
+  const pidRecord = readPidRecord(userName, token);
   const knownPid = pidRecord && Number.isInteger(pidRecord.pid) ? pidRecord.pid : null;
   const knownPortFromPid = pidRecord && Number.isInteger(pidRecord.port) ? pidRecord.port : null;
   const knownPortFromMeta = meta && Number.isInteger(meta.port) ? meta.port : null;
   const preferredPort = knownPortFromPid || knownPortFromMeta || null;
 
   if (knownPid && processAlive(knownPid) && preferredPort) {
-    const health = await appReachable(preferredPort, sessionId, token);
+    const health = await appReachable(preferredPort, userName, token);
     if (health.ok && health.matched) {
       const next = {
         ...meta,
@@ -154,6 +157,7 @@ async function main() {
         updatedAt: new Date().toISOString(),
       };
       writeJson(metaFile, next);
+      syncWorkspaceRegistryEntry(next);
       process.stdout.write(
         `${JSON.stringify(
           {
@@ -163,7 +167,7 @@ async function main() {
             readinessUrl: localUrl(preferredPort, token),
             ready: true,
             reused: true,
-            logPath: logFilePath(sessionId, token),
+            logPath: logFilePath(userName, token),
           },
           null,
           2
@@ -177,12 +181,12 @@ async function main() {
   }
 
   if (knownPid && !processAlive(knownPid)) {
-    removePidRecord(sessionId, token);
+    removePidRecord(userName, token);
   }
 
   let port = preferredPort;
   if (port) {
-    const reachable = await appReachable(port, sessionId, token);
+    const reachable = await appReachable(port, userName, token);
     if (reachable.ok && reachable.matched) {
       throw new Error(
         `Refusing to start a second instance: app is already reachable on port ${port} but no live tracked pid can be safely reused`
@@ -199,7 +203,7 @@ async function main() {
   const url = hostUrl(port, token);
   const readinessUrl = localUrl(port, token);
 
-  const logPath = logFilePath(sessionId, token);
+  const logPath = logFilePath(userName, token);
   const logFd = fs.openSync(logPath, "a");
   const command = resolveStartCommand(serverDir, packageJson);
   const child = spawn(
@@ -212,7 +216,8 @@ async function main() {
       env: {
         ...process.env,
         PORT: String(port),
-        SESSION_ID: sessionId,
+        USER_NAME: userName,
+        SESSION_ID: userName,
         APP_TOKEN: token,
         BASE_PATH: basePath,
       },
@@ -221,13 +226,13 @@ async function main() {
 
   child.unref();
   fs.closeSync(logFd);
-  writePidRecord(sessionId, token, {
+  writePidRecord(userName, token, {
     pid: child.pid,
     port,
     startedAt: new Date().toISOString(),
   });
 
-  const ready = await waitForReady(port, sessionId, token);
+  const ready = await waitForReady(port, userName, token);
   const next = {
     ...meta,
     port,
@@ -236,6 +241,7 @@ async function main() {
     updatedAt: new Date().toISOString(),
   };
   writeJson(metaFile, next);
+  syncWorkspaceRegistryEntry(next);
   syncPlatformRegistryEntry(next);
 
   process.stdout.write(

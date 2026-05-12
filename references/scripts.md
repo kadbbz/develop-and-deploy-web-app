@@ -4,21 +4,21 @@ Use these scripts instead of ad hoc deployment logic whenever possible.
 
 ## Available Scripts
 
-- `node scripts/init-app.js --sessionId <id> [--token <TOKEN>] [--title <title>] [--goal <goal>] [--design <summary>]`
-- `node scripts/sync-docs.js --sessionId <id> --token <TOKEN> [--title <title>] [--goal <goal>] [--design <summary>] [--status <status>] [--port <port>] [--url <url>]`
-- `node scripts/update-registry.js --sessionId <id> --token <TOKEN>`
-- `node scripts/list-apps.js [--sessionId <id>]`
-- `node scripts/install-app.js --sessionId <id> --token <TOKEN>`
-- `node scripts/build-app.js --sessionId <id> --token <TOKEN>`
-- `node scripts/start-app.js --sessionId <id> --token <TOKEN>`
-- `node scripts/deploy-app.js --sessionId <id> --token <TOKEN>`
-- `node scripts/status-app.js --sessionId <id> --token <TOKEN>`
-- `node scripts/restart-app.js --sessionId <id> --token <TOKEN> [--skipBuild]`
-- `node scripts/stop-app.js --sessionId <id> --token <TOKEN>`
-- `node scripts/remove-app.js --sessionId <id> --token <TOKEN>`
-- `node scripts/scaffold-app.js --sessionId <id> --token <TOKEN>`
-- `node scripts/restore-apps.js [--sessionId <id>] [--skipBuild]`
-- `node scripts/set-autostart.js --sessionId <id> --token <TOKEN> [--enabled true|false]`
+- `node scripts/init-app.js --userName <name> [--token <TOKEN>] [--title <title>] [--goal <goal>] [--design <summary>]`
+- `node scripts/sync-docs.js --userName <name> --token <TOKEN> [--title <title>] [--goal <goal>] [--design <summary>] [--status <status>] [--port <port>] [--url <url>]`
+- `node scripts/update-registry.js --userName <name> --token <TOKEN>`
+- `node scripts/list-apps.js [--userName <name>]`
+- `node scripts/install-app.js --userName <name> --token <TOKEN>`
+- `node scripts/build-app.js --userName <name> --token <TOKEN>`
+- `node scripts/start-app.js --userName <name> --token <TOKEN>`
+- `node scripts/deploy-app.js --userName <name> --token <TOKEN>`
+- `node scripts/status-app.js --userName <name> --token <TOKEN>`
+- `node scripts/restart-app.js --userName <name> --token <TOKEN> [--skipBuild]`
+- `node scripts/stop-app.js --userName <name> --token <TOKEN>`
+- `node scripts/remove-app.js --userName <name> --token <TOKEN>`
+- `node scripts/scaffold-app.js --userName <name> --token <TOKEN>`
+- `node scripts/restore-apps.js [--userName <name>] [--skipBuild]`
+- `node scripts/set-autostart.js --userName <name> --token <TOKEN> [--enabled true|false]`
 - `node scripts/bootstrap-host.js`
 
 ## Safety Constraints
@@ -34,8 +34,8 @@ Use these scripts instead of ad hoc deployment logic whenever possible.
 - `init-app.js` creates the app directory plus `APP-META.json`, `APP-NOTES.md`, and `.ai.md`.
 - `init-app.js` must reject duplicate tokens across all generated apps.
 - `sync-docs.js` updates the per-app metadata, notes, and AI context.
-- `update-registry.js` updates `workspaces/web-apps/registry.json` and `workspaces/web-apps/sessions/{sessionId}.json`.
-- `init-app.js`, `start-app.js`, `sync-docs.js`, `update-registry.js`, and `remove-app.js` keep `/var/platform_data/web-app-registry.json` synchronized with `name`, `token`, `file_path`, `port`, `created_at`, `modified_at`, and `session`.
+- `update-registry.js` updates `workspaces/web-apps/registry.json` and `workspaces/web-apps/users/{userName}.json`.
+- `init-app.js`, `start-app.js`, `sync-docs.js`, `update-registry.js`, and `remove-app.js` keep `/var/platform_data/web-app-registry.json` synchronized with `name`, `token`, `file_path`, `port`, `created_at`, `modified_at`, and `user_name`.
 - `list-apps.js` returns current registry data.
 - `install-app.js` runs `npm install` inside the generated app workspace.
 - `build-app.js` runs `npm run build` inside the generated app workspace.

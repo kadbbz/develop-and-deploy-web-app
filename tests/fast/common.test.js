@@ -8,9 +8,9 @@ const path = require("path");
 
 const { common } = require("../helpers/script-test-utils");
 
-test("common validates session ids and tokens", () => {
-  assert.doesNotThrow(() => common.assertSafeSessionId("SESSION_123-ABC"));
-  assert.throws(() => common.assertSafeSessionId("bad id"));
+test("common validates user names and tokens", () => {
+  assert.doesNotThrow(() => common.assertSafeUserName("USER_123-ABC"));
+  assert.throws(() => common.assertSafeUserName("bad id"));
   assert.doesNotThrow(() => common.assertSafeToken("ABCD1234"));
   assert.throws(() => common.assertSafeToken("abcd1234"));
 });
@@ -22,26 +22,26 @@ test("common generates safe tokens and parses args", () => {
   const parsed = common.parseArgs([
     "node",
     "script.js",
-    "--sessionId",
-    "SESSION1",
+    "--userName",
+    "USER1",
     "--skipBuild",
     "--port",
     "33333",
   ]);
 
   assert.deepEqual(parsed, {
-    sessionId: "SESSION1",
+    userName: "USER1",
     skipBuild: true,
     port: "33333",
   });
 });
 
 test("common path helpers and URLs are stable", () => {
-  const sessionId = "SESSION1";
+  const userName = "USER1";
   const token = "ABCD1234";
 
   assert.equal(common.repoRoot(), path.resolve(__dirname, "..", ".."));
-  assert.ok(common.appRoot(sessionId, token).endsWith(path.join("workspaces", "web-apps", sessionId, token)));
+  assert.ok(common.appRoot(userName, token).endsWith(path.join("workspaces", "web-apps", userName, token)));
   assert.equal(common.hostUrl(33333, token), "http://host:33333/ABCD1234/");
   assert.equal(common.localUrl(33333, token), "http://127.0.0.1:33333/ABCD1234/");
   assert.ok(!Number.isNaN(Date.parse(common.isoNow())));

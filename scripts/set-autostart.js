@@ -2,23 +2,26 @@
 
 const {
   appMetaPath,
-  assertSafeSessionId,
+  assertRegisteredOwnership,
+  assertSafeUserName,
   assertSafeToken,
   isoNow,
   parseArgs,
   readJsonIfExists,
+  syncWorkspaceRegistryEntry,
   writeJson,
 } = require("./common");
 
 function main() {
   const args = parseArgs(process.argv);
-  const sessionId = args.sessionId;
+  const userName = args.userName;
   const token = args.token;
 
-  assertSafeSessionId(sessionId);
+  assertSafeUserName(userName);
   assertSafeToken(token);
+  assertRegisteredOwnership(userName, token);
 
-  const metaPath = appMetaPath(sessionId, token);
+  const metaPath = appMetaPath(userName, token);
   const meta = readJsonIfExists(metaPath, null);
   if (!meta) {
     throw new Error("Missing APP-META.json");
@@ -31,6 +34,7 @@ function main() {
     updatedAt: isoNow(),
   };
   writeJson(metaPath, next);
+  syncWorkspaceRegistryEntry(next);
   process.stdout.write(`${JSON.stringify(next, null, 2)}\n`);
 }
 

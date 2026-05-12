@@ -12,10 +12,14 @@ function ensurePlatformDataDir() {
   common.ensureDir(common.platformDataDir());
 }
 
-function randomSessionId(prefix = "TEST") {
+function randomUserName(prefix = "TEST") {
   const stamp = Date.now().toString(36).toUpperCase();
   const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
   return `${prefix}_${stamp}_${suffix}`;
+}
+
+function randomSessionId(prefix = "TEST") {
+  return randomUserName(prefix);
 }
 
 function randomToken() {
@@ -75,8 +79,8 @@ function runScript(scriptName, argMap, options = {}) {
   };
 }
 
-function writeFakeRunnableApp(sessionId, token) {
-  const appDir = common.appRoot(sessionId, token);
+function writeFakeRunnableApp(userName, token) {
+  const appDir = common.appRoot(userName, token);
   const serverDir = path.join(appDir, "server");
   const serverDistDir = path.join(serverDir, "dist");
   const clientDistDir = path.join(appDir, "client", "dist");
@@ -177,21 +181,21 @@ function request(url) {
   });
 }
 
-async function shutdownPort(port, sessionId, token) {
+async function shutdownPort(port, userName, token) {
   if (!Number.isInteger(port)) {
     return;
   }
   await request(`${common.localUrl(port, token)}shutdown`);
 }
 
-async function cleanupSession(sessionId, token, extraPorts = []) {
+async function cleanupSession(userName, token, extraPorts = []) {
   try {
-    runScript("stop-app.js", { sessionId, token }, { allowFailure: true });
+    runScript("stop-app.js", { userName, token }, { allowFailure: true });
   } catch (error) {
     // Best-effort cleanup only.
   }
 
-  const meta = common.readJsonIfExists(common.appMetaPath(sessionId, token), null);
+  const meta = common.readJsonIfExists(common.appMetaPath(userName, token), null);
   const ports = new Set(extraPorts.filter((port) => Number.isInteger(port)));
   if (meta && Number.isInteger(meta.port)) {
     ports.add(meta.port);
@@ -199,26 +203,19 @@ async function cleanupSession(sessionId, token, extraPorts = []) {
 
   for (const port of ports) {
     // eslint-disable-next-line no-await-in-loop
-    await shutdownPort(port, sessionId, token);
+    await shutdownPort(port, userName, token);
   }
 
-  fs.rmSync(common.sessionRoot(sessionId), { recursive: true, force: true });
-  fs.rmSync(common.sessionIndexPath(sessionId), { force: true });
-
-  const registryFile = common.registryPath();
-  const registry = common.readJsonIfExists(registryFile, null);
-  if (registry && Array.isArray(registry.sessions)) {
-    const next = {
-      sessions: registry.sessions.filter((entry) => entry.sessionId !== sessionId),
-    };
-    common.writeJson(registryFile, next);
-  }
+  fs.rmSync(common.userRoot(userName), { recursive: true, force: true });
+  fs.rmSync(common.userIndexPath(userName), { force: true });
+  common.removeWorkspaceRegistryEntry(userName, token);
 }
 
 module.exports = {
   cleanupSession,
   common,
   ensurePlatformDataDir,
+  randomUserName,
   randomSessionId,
   randomToken,
   repoRoot,

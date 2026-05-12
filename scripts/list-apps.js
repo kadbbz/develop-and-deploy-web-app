@@ -1,18 +1,14 @@
 "use strict";
 
-const { parseArgs, readJsonIfExists, registryPath, sessionIndexPath } = require("./common");
+const { parseArgs, readUserIndex, readWorkspaceRegistry } = require("./common");
 
 function main() {
   const args = parseArgs(process.argv);
-  if (args.sessionId) {
-    const sessionIndex = readJsonIfExists(sessionIndexPath(args.sessionId), {
-      sessionId: args.sessionId,
-      apps: [],
-    });
-    process.stdout.write(`${JSON.stringify(sessionIndex, null, 2)}\n`);
+  if (args.userName) {
+    process.stdout.write(`${JSON.stringify(readUserIndex(args.userName), null, 2)}\n`);
     return;
   }
-  const registry = readJsonIfExists(registryPath(), { sessions: [] });
+  const registry = readWorkspaceRegistry();
   process.stdout.write(`${JSON.stringify(registry, null, 2)}\n`);
 }
 

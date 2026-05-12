@@ -2,7 +2,7 @@
 
 const { spawnSync } = require("child_process");
 const {
-  assertSafeSessionId,
+  assertSafeUserName,
   assertSafeToken,
   extractLastJsonObject,
   parseArgs,
@@ -24,37 +24,37 @@ function runNodeScript(scriptName, args) {
 
 function main() {
   const args = parseArgs(process.argv);
-  const sessionId = args.sessionId;
+  const userName = args.userName;
   const token = args.token;
 
-  assertSafeSessionId(sessionId);
+  assertSafeUserName(userName);
   assertSafeToken(token);
 
   if (!args.skipBuild) {
     runNodeScript("scripts/install-app.js", [
-      "--sessionId",
-      sessionId,
+      "--userName",
+      userName,
       "--token",
       token,
     ]);
     runNodeScript("scripts/build-app.js", [
-      "--sessionId",
-      sessionId,
+      "--userName",
+      userName,
       "--token",
       token,
     ]);
   }
 
   const started = runNodeScript("scripts/start-app.js", [
-    "--sessionId",
-    sessionId,
+    "--userName",
+    userName,
     "--token",
     token,
   ]);
 
   const synced = runNodeScript("scripts/sync-docs.js", [
-    "--sessionId",
-    sessionId,
+    "--userName",
+    userName,
     "--token",
     token,
     "--status",
@@ -66,8 +66,8 @@ function main() {
   ]);
 
   const registry = runNodeScript("scripts/update-registry.js", [
-    "--sessionId",
-    sessionId,
+    "--userName",
+    userName,
     "--token",
     token,
   ]);

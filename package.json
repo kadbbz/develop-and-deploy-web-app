@@ -3,7 +3,7 @@
   "private": true,
   "type": "commonjs",
   "dependencies": {
-    "better-sqlite3": "^11.10.0"
+    "@seald-io/nedb": "^4.1.2"
   },
   "scripts": {
     "test": "npm run test:fast && npm run test:full",

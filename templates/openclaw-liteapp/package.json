@@ -1,0 +1,10 @@
+{
+  "name": "openclaw-liteapp-__TOKEN__",
+  "private": true,
+  "scripts": {
+    "install": "npm --prefix client install && npm --prefix server install",
+    "dev": "npm --prefix server run dev",
+    "build": "npm --prefix client run build && npm --prefix server run build",
+    "start": "npm --prefix server run start"
+  }
+}

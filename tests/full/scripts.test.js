@@ -73,20 +73,39 @@ test("init-app and scaffold-app create an app scaffold", async (t) => {
   assert.ok(fs.existsSync(path.join(appDir, "client", "src", "App.tsx")));
   assert.ok(fs.existsSync(path.join(appDir, "server", "src", "index.ts")));
   assert.ok(fs.existsSync(path.join(appDir, "server", "customize", "login-service.js")));
-  assert.ok(fs.existsSync(path.join(appDir, "server", "customize", "master-data-service.js")));
-  assert.ok(fs.existsSync(path.join(appDir, "client", "public", "customize", "login-aspect.js")));
-  assert.ok(fs.existsSync(path.join(appDir, "client", "public", "customize", "master-data-aspect.js")));
-  assert.ok(fs.existsSync(path.join(appDir, "available-master-data-services.md")));
-  assert.ok(fs.existsSync(path.join(appDir, "style-intro.md")));
+  assert.ok(fs.existsSync(path.join(appDir, "NON_FUNCTIONAL_REQUIREMENTS.md")));
 
-  const indexHtml = fs.readFileSync(path.join(appDir, "client", "index.html"), "utf8");
-  assert.match(indexHtml, /customize\/login-aspect\.js/);
-  assert.match(indexHtml, /customize\/master-data-aspect\.js/);
+  const clientPackage = common.readJsonIfExists(path.join(appDir, "client", "package.json"), null);
+  assert.equal(clientPackage.dependencies.antd.startsWith("^6."), true);
+  assert.match(clientPackage.dependencies["@ant-design/pro-components"], /^3\./);
+  assert.match(clientPackage.dependencies.echarts, /^\^6\./);
+
+  const serverPackage = common.readJsonIfExists(path.join(appDir, "server", "package.json"), null);
+  assert.match(serverPackage.dependencies["@seald-io/nedb"], /^\^4\./);
+
+  const serverSource = fs.readFileSync(path.join(appDir, "server", "src", "index.ts"), "utf8");
+  assert.match(serverSource, /auth\/register/);
+  assert.match(serverSource, /authenticateBasicHeader/);
+  assert.match(serverSource, /owner_username/);
+  assert.match(serverSource, /evaluateBusinessRules/);
+  assert.match(serverSource, /getUserRecords/);
+  assert.match(serverSource, /API endpoint not found/);
+  assert.match(serverSource, /CURRENT_SCHEMA_VERSION/);
+  assert.doesNotMatch(serverSource, /operation-log|admin\/ai-query|requireAdmin|logsDb/);
+
+  const clientSource = fs.readFileSync(path.join(appDir, "client", "src", "App.tsx"), "utf8");
+  assert.match(clientSource, /@ant-design\/pro-components/);
+  assert.match(clientSource, /echarts/);
+  assert.match(clientSource, /客户拜访协作填报/);
+  assert.match(clientSource, /固定规则结果/);
+  assert.match(clientSource, /我的协作填报/);
+  assert.doesNotMatch(clientSource, /OpenClaw|LiteApp|后台|AI 后台|admin\/ai-query|LogItem|QueryPayload/);
 
   const appReadme = fs.readFileSync(path.join(appDir, "README.md"), "utf8");
-  assert.match(appReadme, /templates\/simple-form\/readme\.md/);
-  assert.match(appReadme, /available-master-data-services\.md/);
-  assert.match(appReadme, /server\/customize/);
+  assert.match(appReadme, /Shared user store/);
+  assert.match(appReadme, /Authorization: Basic/);
+  assert.match(appReadme, /records\.db/);
+  assert.doesNotMatch(appReadme, /AI Query|admin|operation-log|logs/);
 });
 
 test("set-autostart, sync-docs, update-registry, and list-apps stay in sync", async (t) => {

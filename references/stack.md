@@ -1,81 +1,66 @@
 # Stack Guide
 
-Use this reference when scaffolding a new project from scratch.
+Use this stack for every generated OpenClaw lightweight app unless the user explicitly asks for a different implementation.
 
-## Recommended Layout
+## Required Stack
+
+- Server: Express + TypeScript
+- Database: NeDB through `@seald-io/nedb`
+- Frontend: React + TypeScript
+- UI components: Ant Design Pro
+- Charts: ECharts
+
+## Required Runtime Shape
 
 ```text
 .
 |-- client/
 |-- server/
-|-- package.json
-`-- SKILL.md
+|-- NON_FUNCTIONAL_REQUIREMENTS.md
+|-- README.md
+`-- package.json
 ```
 
-## Root Package
+## Platform Data
 
-Prefer a root `package.json` with workspace-style scripts so the app is easy to run:
+- Shared users live in `PLATFORM_DATA_ROOT/.lite-apps/platform/users.db` or `~/.lite-apps/platform/users.db`.
+- App records live under the generated app directory.
 
-```json
-{
-  "private": true,
-  "workspaces": ["client", "server"],
-  "scripts": {
-    "dev": "concurrently \"npm run dev -w server\" \"npm run dev -w client\"",
-    "build": "npm run build -w client && npm run build -w server",
-    "start": "npm run start -w server"
-  }
-}
-```
+## Server Defaults
 
-If `concurrently` is not desired, equivalent scripts that use `npm --prefix` are acceptable.
+Expose these routes under `/{token}/api`:
 
-## Frontend Defaults
+- `GET /health`
+- `POST /auth/register`
+- `POST /auth/login`
+- `GET /auth/session`
+- `POST /auth/logout`
+- `GET /schema`
+- `GET /records`
+- `POST /records`
+- `PATCH /records/:id`
+- `DELETE /records/:id`
+- `GET /stats`
 
-- Scaffold with React + TypeScript.
-- Prefer Vite.
-- Keep the UI intentionally simple and complete, not decorative placeholder text.
-- Call the backend through `/api`.
-- In development, configure a proxy from Vite to the backend server.
-- Configure Vite `base` to `/${token}/` for production builds when the path is known at scaffold time.
-- Ensure the production server reads its assigned port from configuration or environment instead of hard-coding one shared port.
+Authentication must accept:
 
-## Backend Defaults
+- `x-openclaw-session`
+- `Authorization: Bearer ...`
+- `Authorization: Basic ...`
 
-- Use Express with TypeScript.
-- Use `tsx` for local development.
-- Compile with `tsc` for production start.
-- Expose:
-  - `GET /api/health` behind the base path
-  - at least one CRUD resource such as `/api/todos` behind the base path
-- In production, serve the built frontend from Express under `/${token}/`.
+## Data Visibility Defaults
 
-## SQLite Defaults
+- Normal app pages and record APIs expose the current user's own records.
+- Submitted records must be persisted to NeDB `records.db`.
 
-- Prefer `better-sqlite3`.
-- Keep schema initialization in a small dedicated module such as `server/src/db.ts`.
-- Create the database file automatically on first run.
-- Keep the schema minimal and local to the app.
-- Keep all generated artifacts inside the assigned app folder under `workspaces/web-apps/{userName}/{token}`.
-- Keep app-local metadata and notes in the app folder so each app remains independently inspectable.
+## Business Workspace Defaults
 
-## Minimum Product Quality
+- Generated apps should serve non-IT business users.
+- Prefer concrete forms, fixed-rule calculations, status flow, and business filters.
+- Keep deterministic calculations in the server; the frontend may preview the same result.
 
-Ship a usable vertical slice:
+## Compatibility Defaults
 
-- one real entity stored in SQLite
-- list view
-- create flow
-- one update or toggle flow
-- delete flow if it fits naturally
-- loading, empty, and error states
-
-## Verification
-
-Before exposing the app publicly:
-
-1. Install dependencies successfully.
-2. Build both packages successfully.
-3. Start the production server successfully on a free port in `33333-39999`.
-4. Confirm the page loads locally through `/${token}/`.
-5. Confirm the API responds locally through `/${token}/api/...`.
+- Store record payloads with a schema version.
+- Keep a read-time migration hook even when the first version has no migrations.
+- Expose the current schema contract through `/schema`.

@@ -3,7 +3,7 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
-const Database = require("better-sqlite3");
+const Datastore = require("@seald-io/nedb");
 
 function ensureParentDir(filePath) {
   fs.mkdirSync(path.dirname(path.resolve(filePath)), { recursive: true });
@@ -17,13 +17,17 @@ function randomToken() {
   return crypto.randomBytes(24).toString("base64url");
 }
 
-function defaultHashPassword(password, salt) {
+function hashPassword(password, salt) {
   return crypto.scryptSync(String(password), salt, 64).toString("hex");
 }
 
-function defaultVerifyPassword(password, salt, expectedHash) {
-  const actual = defaultHashPassword(password, salt);
-  return crypto.timingSafeEqual(Buffer.from(actual, "hex"), Buffer.from(expectedHash, "hex"));
+function verifyPassword(password, salt, expectedHash) {
+  const actual = Buffer.from(hashPassword(password, salt), "hex");
+  const expected = Buffer.from(String(expectedHash || ""), "hex");
+  if (actual.length !== expected.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(actual, expected);
 }
 
 function normalizeRoles(value) {
@@ -39,116 +43,149 @@ function normalizeRoles(value) {
   return [];
 }
 
-function createLoginService(config = {}) {
-  const dbPath = config.dbPath || path.resolve(process.cwd(), "login-service.db");
+function userKey(username) {
+  return `user:${String(username || "").trim()}`;
+}
+
+function callDatastore(db, methodName, ...args) {
+  return new Promise((resolve, reject) => {
+    db[methodName](...args, (error, result) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(result);
+    });
+  });
+}
+
+function loadDatabase(db) {
+  return new Promise((resolve, reject) => {
+    db.loadDatabase((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+function ensureIndex(db, options) {
+  return new Promise((resolve, reject) => {
+    db.ensureIndex(options, (error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+async function createLoginService(config = {}) {
+  const dbPath = config.dbPath || path.resolve(process.cwd(), "platform-users.db");
   ensureParentDir(dbPath);
-  const db = new Database(dbPath);
+
+  const db = new Datastore({
+    filename: dbPath,
+    autoload: false,
+  });
+  await loadDatabase(db);
+  await ensureIndex(db, { fieldName: "user_key", unique: true, sparse: true });
+  await ensureIndex(db, { fieldName: "session_hash", unique: true, sparse: true });
+
   const sessionTtlMs = Number.isFinite(Number(config.sessionTtlMs))
     ? Number(config.sessionTtlMs)
     : 1000 * 60 * 60 * 12;
-  const hashPassword = config.hashPassword || defaultHashPassword;
-  const verifyPassword = config.verifyPassword || defaultVerifyPassword;
 
-  db.pragma("journal_mode = WAL");
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT NOT NULL UNIQUE,
-      password_hash TEXT NOT NULL,
-      password_salt TEXT NOT NULL,
-      display_name TEXT NOT NULL,
-      roles TEXT NOT NULL DEFAULT '[]',
-      is_active INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
+  async function findUser(username) {
+    return callDatastore(db, "findOne", {
+      kind: "user",
+      user_key: userKey(username),
+    });
+  }
 
-    CREATE TABLE IF NOT EXISTS sessions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_token TEXT NOT NULL UNIQUE,
-      session_hash TEXT NOT NULL UNIQUE,
-      user_id INTEGER NOT NULL,
-      issued_at TEXT NOT NULL,
-      expires_at TEXT NOT NULL,
-      revoked_at TEXT,
-      FOREIGN KEY (user_id) REFERENCES users (id)
-    );
-  `);
-
-  const insertUserStatement = db.prepare(`
-    INSERT INTO users (username, password_hash, password_salt, display_name, roles, is_active, created_at, updated_at)
-    VALUES (@username, @password_hash, @password_salt, @display_name, @roles, @is_active, @created_at, @updated_at)
-  `);
-  const selectUserByUsername = db.prepare(`
-    SELECT id, username, password_hash, password_salt, display_name, roles, is_active, created_at, updated_at
-    FROM users
-    WHERE username = ?
-  `);
-  const selectSessionStatement = db.prepare(`
-    SELECT
-      sessions.id,
-      sessions.session_token,
-      sessions.issued_at,
-      sessions.expires_at,
-      sessions.revoked_at,
-      users.id AS user_id,
-      users.username,
-      users.display_name,
-      users.roles,
-      users.is_active
-    FROM sessions
-    JOIN users ON users.id = sessions.user_id
-    WHERE sessions.session_hash = ?
-  `);
-  const revokeSessionStatement = db.prepare(`
-    UPDATE sessions
-    SET revoked_at = @revoked_at
-    WHERE session_hash = @session_hash AND revoked_at IS NULL
-  `);
-  const insertSessionStatement = db.prepare(`
-    INSERT INTO sessions (session_token, session_hash, user_id, issued_at, expires_at)
-    VALUES (@session_token, @session_hash, @user_id, @issued_at, @expires_at)
-  `);
-  const cleanupSessionsStatement = db.prepare(`
-    DELETE FROM sessions
-    WHERE expires_at <= @now OR revoked_at IS NOT NULL
-  `);
-
-  function seedUser(user) {
+  async function seedUser(user) {
     const username = String(user.username || "").trim();
     const password = String(user.password || "");
     if (!username || !password) {
       throw new Error("seedUser requires username and password");
     }
-    if (selectUserByUsername.get(username)) {
-      return getUserProfile(selectUserByUsername.get(username));
+
+    const existing = await findUser(username);
+    if (existing) {
+      if (user.roles) {
+        return ensureUserRoles(username, user.roles);
+      }
+      return toUserProfile(existing);
     }
 
-    const salt = crypto.randomBytes(16).toString("hex");
     const now = new Date().toISOString();
-    insertUserStatement.run({
+    const salt = crypto.randomBytes(16).toString("hex");
+    await callDatastore(db, "insert", {
+      kind: "user",
+      user_key: userKey(username),
       username,
       password_hash: hashPassword(password, salt),
       password_salt: salt,
       display_name: String(user.displayName || username),
-      roles: JSON.stringify(normalizeRoles(user.roles)),
-      is_active: user.isActive === false ? 0 : 1,
+      roles: normalizeRoles(user.roles),
+      is_active: user.isActive === false ? false : true,
       created_at: now,
       updated_at: now,
     });
-    return getUserProfile(selectUserByUsername.get(username));
+    return toUserProfile(await findUser(username));
   }
 
-  function login(credentials = {}) {
-    cleanupExpiredSessions();
+  async function register(user) {
+    const username = String(user.username || "").trim();
+    const password = String(user.password || "");
+    if (!username || !password) {
+      throw new Error("register requires username and password");
+    }
+    if (await findUser(username)) {
+      throw new Error("Username already exists");
+    }
+    return seedUser({
+      username,
+      password,
+      displayName: user.displayName || username,
+      roles: user.roles || ["user"],
+      isActive: user.isActive,
+    });
+  }
+
+  async function ensureUserRoles(username, roles) {
+    const user = await findUser(username);
+    if (!user) {
+      throw new Error(`Unknown user: ${username}`);
+    }
+    const nextRoles = Array.from(new Set([...normalizeRoles(user.roles), ...normalizeRoles(roles)]));
+    await callDatastore(
+      db,
+      "update",
+      { _id: user._id },
+      {
+        $set: {
+          roles: nextRoles,
+          updated_at: new Date().toISOString(),
+        },
+      }
+    );
+    return toUserProfile(await findUser(username));
+  }
+
+  async function login(credentials = {}) {
+    await cleanupExpiredSessions();
     const username = String(credentials.username || "").trim();
     const password = String(credentials.password || "");
     if (!username || !password) {
       throw new Error("username and password are required");
     }
 
-    const user = selectUserByUsername.get(username);
-    if (!user || user.is_active !== 1) {
+    const user = await findUser(username);
+    if (!user || user.is_active !== true) {
       throw new Error("Invalid username or password");
     }
     if (!verifyPassword(password, user.password_salt, user.password_hash)) {
@@ -158,18 +195,19 @@ function createLoginService(config = {}) {
     const sessionToken = randomToken();
     const issuedAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + sessionTtlMs).toISOString();
-    insertSessionStatement.run({
-      session_token: sessionToken,
+    await callDatastore(db, "insert", {
+      kind: "session",
       session_hash: sha256(sessionToken),
-      user_id: user.id,
+      user_id: user._id,
       issued_at: issuedAt,
       expires_at: expiresAt,
+      revoked_at: null,
     });
 
     return {
       authenticated: true,
       sessionToken,
-      user: getUserProfile(user),
+      user: toUserProfile(user),
       session: {
         issuedAt,
         expiresAt,
@@ -177,38 +215,59 @@ function createLoginService(config = {}) {
     };
   }
 
-  function authenticate(sessionToken) {
-    cleanupExpiredSessions();
+  async function authenticateBasicHeader(headerValue) {
+    const credentials = parseBasicAuthHeader(headerValue);
+    if (!credentials) {
+      return null;
+    }
+
+    const user = await findUser(credentials.username);
+    if (!user || user.is_active !== true) {
+      return null;
+    }
+    if (!verifyPassword(credentials.password, user.password_salt, user.password_hash)) {
+      return null;
+    }
+
+    return {
+      user: toUserProfile(user),
+      session: {
+        type: "basic",
+        issuedAt: new Date().toISOString(),
+        expiresAt: null,
+      },
+    };
+  }
+
+  async function authenticate(sessionToken) {
+    await cleanupExpiredSessions();
     const token = String(sessionToken || "").trim();
     if (!token) {
       return null;
     }
 
-    const session = selectSessionStatement.get(sha256(token));
-    if (!session) {
-      return null;
-    }
-    if (session.revoked_at) {
+    const session = await callDatastore(db, "findOne", {
+      kind: "session",
+      session_hash: sha256(token),
+    });
+    if (!session || session.revoked_at) {
       return null;
     }
     if (new Date(session.expires_at).getTime() <= Date.now()) {
-      revokeSessionStatement.run({
-        revoked_at: new Date().toISOString(),
-        session_hash: sha256(token),
-      });
+      await revokeSession(token);
       return null;
     }
-    if (session.is_active !== 1) {
+
+    const user = await callDatastore(db, "findOne", {
+      kind: "user",
+      _id: session.user_id,
+    });
+    if (!user || user.is_active !== true) {
       return null;
     }
 
     return {
-      user: {
-        id: session.user_id,
-        username: session.username,
-        displayName: session.display_name,
-        roles: parseRoles(session.roles),
-      },
+      user: toUserProfile(user),
       session: {
         issuedAt: session.issued_at,
         expiresAt: session.expires_at,
@@ -216,50 +275,101 @@ function createLoginService(config = {}) {
     };
   }
 
-  function logout(sessionToken) {
+  async function logout(sessionToken) {
     const token = String(sessionToken || "").trim();
     if (!token) {
       return false;
     }
-    const result = revokeSessionStatement.run({
-      revoked_at: new Date().toISOString(),
-      session_hash: sha256(token),
-    });
-    return result.changes > 0;
+    return revokeSession(token);
   }
 
-  function cleanupExpiredSessions() {
-    cleanupSessionsStatement.run({ now: new Date().toISOString() });
+  async function revokeSession(sessionToken) {
+    const changed = await callDatastore(
+      db,
+      "update",
+      {
+        kind: "session",
+        session_hash: sha256(sessionToken),
+        revoked_at: null,
+      },
+      {
+        $set: {
+          revoked_at: new Date().toISOString(),
+        },
+      }
+    );
+    return Number(changed) > 0;
+  }
+
+  async function cleanupExpiredSessions() {
+    await callDatastore(
+      db,
+      "remove",
+      {
+        kind: "session",
+        $or: [
+          { expires_at: { $lte: new Date().toISOString() } },
+          { revoked_at: { $ne: null } },
+        ],
+      },
+      { multi: true }
+    );
+  }
+
+  async function getUser(username) {
+    const user = await findUser(username);
+    return user ? toUserProfile(user) : null;
   }
 
   return {
     seedUser,
+    register,
+    ensureUserRoles,
     login,
     authenticate,
+    authenticateBasicHeader,
     logout,
     cleanupExpiredSessions,
+    getUser,
     _unsafe: {
       db,
     },
   };
 }
 
-function parseRoles(value) {
-  try {
-    const parsed = JSON.parse(String(value || "[]"));
-    return normalizeRoles(parsed);
-  } catch (_error) {
-    return [];
+function parseBasicAuthHeader(headerValue) {
+  const value = String(headerValue || "").trim();
+  if (!value.toLowerCase().startsWith("basic ")) {
+    return null;
   }
+
+  let decoded = "";
+  try {
+    decoded = Buffer.from(value.slice("Basic ".length).trim(), "base64").toString("utf8");
+  } catch (_error) {
+    return null;
+  }
+
+  const separatorIndex = decoded.indexOf(":");
+  if (separatorIndex <= 0) {
+    return null;
+  }
+
+  return {
+    username: decoded.slice(0, separatorIndex),
+    password: decoded.slice(separatorIndex + 1),
+  };
 }
 
-function getUserProfile(user) {
+function toUserProfile(user) {
   return {
-    id: user.id,
+    id: user._id,
     username: user.username,
     displayName: user.display_name,
-    roles: parseRoles(user.roles),
-    isActive: user.is_active === 1,
+    roles: normalizeRoles(user.roles),
+    isActive: user.is_active === true,
+    createdAt: user.created_at,
+    updatedAt: user.updated_at,
   };
 }
 

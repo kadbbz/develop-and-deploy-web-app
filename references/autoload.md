@@ -19,7 +19,7 @@ The app must therefore behave correctly under a non-root base path.
 - If React Router is used, set its basename to `/${token}`.
 - Prefer relative fetch helpers or a single computed API base so browser requests resolve to `/${token}/api/...`.
 
-## Backend Requirements
+## Server Requirements
 
 - Mount the app router under `/${token}`.
 - Keep API routes under `/${token}/api`.

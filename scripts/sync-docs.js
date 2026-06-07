@@ -57,18 +57,19 @@ function changeLogEntry(previous, next) {
 }
 
 function aiNotesTemplate(meta) {
-  return `# AI Context
+  return `# Agent Context
 
 ## User Requirements
 
 - ${meta.goal}
 
-## AI Design Notes
+## Design Notes
 
 - ${meta.designSummary}
 - Stack: ${meta.stack.frontend}, ${meta.stack.backend}, ${meta.stack.database}
 - Base path: /${meta.token}/
 - URL: ${meta.url || "Pending startup"}
+- Non-functional requirements: ${meta.nonFunctionalRequirements || "Not recorded"}
 
 ## Working Rule
 
@@ -102,6 +103,9 @@ function main() {
   if (args.design) {
     next.designSummary = args.design;
   }
+  if (args.nfr) {
+    next.nonFunctionalRequirements = args.nfr;
+  }
   if (args.status) {
     next.status = args.status;
   }
@@ -133,6 +137,11 @@ function main() {
   }
   notes = upsertSection(notes, "Goal", next.goal);
   notes = upsertSection(notes, "Design", next.designSummary);
+  notes = upsertSection(
+    notes,
+    "Non-functional requirements",
+    next.nonFunctionalRequirements || "Not recorded"
+  );
   notes = upsertSection(
     notes,
     "Runbook",

@@ -40,9 +40,15 @@ ${meta.goal}
 
 ${meta.designSummary}
 
+## Non-functional requirements
+
+${meta.nonFunctionalRequirements}
+
 ## Data model
 
-- Define entities in the app source and keep this section current.
+- NeDB records with owner-based access control.
+- Server-side deterministic business rules for calculation and filtering.
+- Payload schema versioning with read-time migration.
 
 ## Runbook
 
@@ -61,17 +67,18 @@ ${meta.url || "Pending startup"}
 }
 
 function aiNotesTemplate(meta) {
-  return `# AI Context
+  return `# Agent Context
 
 ## User Requirements
 
 - ${meta.goal}
 
-## AI Design Notes
+## Design Notes
 
 - ${meta.designSummary}
 - Stack: ${meta.stack.frontend}, ${meta.stack.backend}, ${meta.stack.database}
 - Base path: /${meta.token}/
+- Non-functional requirements: ${meta.nonFunctionalRequirements}
 
 ## Working Rule
 
@@ -84,8 +91,11 @@ function main() {
   const userName = args.userName;
   const requestedToken = args.token;
   const title = args.title || "Web App";
-  const goal = args.goal || "Build and run a simple full-stack web app.";
-  const designSummary = args.design || "Use the skill defaults and Huashu-inspired web styling.";
+  const goal = args.goal || "Build and run a governed business workspace for data entry, fixed-rule calculation, filtering, and collaboration.";
+  const designSummary = args.design || "Use Huashu Design direction with Ant Design Pro operational UI.";
+  const nonFunctionalRequirements =
+    args.nfr ||
+    "Confirm authentication, current-user data visibility, database persistence, schema compatibility, and preview access before delivery.";
 
   assertSafeUserName(userName);
   const token = requestedToken || generateToken();
@@ -116,13 +126,14 @@ function main() {
     title,
     goal,
     designSummary,
+    nonFunctionalRequirements,
     path: path.join("apps", token).replaceAll("\\", "/"),
     port: null,
     url: null,
     stack: {
-      frontend: "React + TypeScript + Vite",
+      frontend: "React + Ant Design Pro + ECharts",
       backend: "Express + TypeScript",
-      database: "SQLite",
+      database: "NeDB",
     },
     autoStart: true,
     isDisabled: false,

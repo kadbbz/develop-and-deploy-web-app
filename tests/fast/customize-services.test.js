@@ -9,17 +9,17 @@ const path = require("path");
 const { createLoginService } = require("../../customize/login-service");
 const { createMasterDataService } = require("../../customize/master-data-service");
 
-test("login-service seeds users and authenticates sessions with sqlite", () => {
+test("login-service supports shared NeDB users, sessions, registration, and Basic auth", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "liteapp-login-"));
-  const dbPath = path.join(tempDir, "auth.db");
+  const dbPath = path.join(tempDir, "users.db");
 
   try {
-    const service = createLoginService({
+    const service = await createLoginService({
       dbPath,
       sessionTtlMs: 60_000,
     });
 
-    const seeded = service.seedUser({
+    const seeded = await service.seedUser({
       username: "analyst",
       password: "pass-123",
       displayName: "Data Analyst",
@@ -29,7 +29,16 @@ test("login-service seeds users and authenticates sessions with sqlite", () => {
     assert.equal(seeded.username, "analyst");
     assert.deepEqual(seeded.roles, ["staff", "survey"]);
 
-    const session = service.login({
+    const registered = await service.register({
+      username: "operator",
+      password: "pass-456",
+      displayName: "Operator",
+    });
+
+    assert.equal(registered.username, "operator");
+    assert.deepEqual(registered.roles, ["user"]);
+
+    const session = await service.login({
       username: "analyst",
       password: "pass-123",
     });
@@ -38,12 +47,20 @@ test("login-service seeds users and authenticates sessions with sqlite", () => {
     assert.equal(typeof session.sessionToken, "string");
     assert.ok(session.sessionToken.length > 10);
 
-    const restored = service.authenticate(session.sessionToken);
+    const restored = await service.authenticate(session.sessionToken);
     assert.equal(restored.user.username, "analyst");
     assert.deepEqual(restored.user.roles, ["staff", "survey"]);
 
-    assert.equal(service.logout(session.sessionToken), true);
-    assert.equal(service.authenticate(session.sessionToken), null);
+    const basic = await service.authenticateBasicHeader(
+      `Basic ${Buffer.from("operator:pass-456").toString("base64")}`
+    );
+    assert.equal(basic.user.username, "operator");
+
+    const elevated = await service.ensureUserRoles("operator", ["admin"]);
+    assert.deepEqual(elevated.roles, ["user", "admin"]);
+
+    assert.equal(await service.logout(session.sessionToken), true);
+    assert.equal(await service.authenticate(session.sessionToken), null);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

@@ -37,7 +37,7 @@ The target characteristics are:
 - Avoid generic left-border highlight cards repeated across the full page.
 - Avoid fake-illustration placeholders when the layout can be solved with typography and composition.
 - Avoid relying on Inter as the only visual voice for display text.
-- Avoid the "AI slop" pattern of equal cards, shallow hierarchy, and decorative gradients with no content logic.
+- Avoid the pattern of equal cards, shallow hierarchy, and decorative gradients with no content logic.
 
 ## Composition Patterns
 

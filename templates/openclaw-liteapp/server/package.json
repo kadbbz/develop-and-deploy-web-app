@@ -1,0 +1,21 @@
+{
+  "name": "openclaw-liteapp-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "PORT=3001 APP_TOKEN=__TOKEN__ BASE_PATH=/__TOKEN__ tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@seald-io/nedb": "^4.1.2",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.1",
+    "@types/node": "^22.15.17",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}

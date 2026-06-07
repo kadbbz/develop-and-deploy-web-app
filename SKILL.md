@@ -1,6 +1,6 @@
 ---
 name: develop-and-deploy-web-app
-description: Build, run, and share a simple full-stack web application with a TypeScript Express backend, React frontend, and SQLite database. Use when a user wants a working web app or explicitly asks for a LiteApp / 轻应用 scaffolded in the current workspace, started locally, and exposed through a public URL for demos, testing, or review.
+description: Build and preview governed OpenClaw lightweight web apps with shared platform users, Basic authentication, Express, NeDB, React, Ant Design Pro, and ECharts. Use when a user asks for a 轻应用, LiteApp, data-entry app, approval app, rule-calculation app, or small internal web app that must be scaffolded and previewed locally.
 metadata:
   openclaw:
     requires:
@@ -11,137 +11,88 @@ metadata:
 
 # Develop And Deploy Web App
 
-Build a simple full-stack web app in the current workspace, run it locally as its own isolated process, and provide a URL that another person can open from outside the machine.
+This skill builds OpenClaw lightweight web apps from a governed scaffold.
 
-If the user says "轻应用" or "LiteApp", treat that as an explicit request to use this skill.
+The source of truth is `docs/design.md`.
 
-## Operating Rules
+Use these references when implementing or updating the skill:
 
-- Resolve the LiteApp root as `PLATFORM_DATA_ROOT/.lite-apps` when `PLATFORM_DATA_ROOT` exists; otherwise use `~/.lite-apps`.
-- Create the generated web project under `.lite-apps/apps/{token}`.
-- Treat the repository `customize/` directory as deployment templates only. At runtime, read customize overrides from `.lite-apps/customize/`.
-- Treat `{token}` as an 8-character random identifier made only of uppercase letters and digits.
-- Ensure every new `{token}` is globally unique across all generated apps.
-- If `userName` is available in the runtime context, use it directly. If it is not discoverable from the environment or user request, ask the user before scaffolding.
-- Do not scaffold the app at the repository root unless the user explicitly overrides the output rule.
-- Treat `{token}` as both the folder name and the URL segment.
-- Run each web app in its own isolated Node.js process.
-- Use one shared LiteApp host on public port `33333` to route `/{token}/...` traffic to the correct app process.
-- Prefer a two-package layout: `client/` for the React app and `server/` for the Express API.
-- Prefer TypeScript everywhere.
-- Prefer Vite for the React frontend.
-- Prefer `better-sqlite3` for SQLite access unless the workspace already uses another SQLite library.
-- Prefer one final HTTP service. In production mode, make Express serve the built frontend and the `/api` endpoints from the same server process.
-- If the user does not specify a product idea, default to a simple todo or notes app with one SQLite-backed entity and a complete happy path.
-- Extend an existing app when one already exists. Do not replace working user code without a strong reason.
-- Before modifying an existing generated web app, read its `.ai.md` file first.
-- Before creating a new app, inspect `templates/*/readme.md` and choose the closest template before inventing a new layout or flow from scratch.
-- Unless the user explicitly says the LiteApp is anonymous, use the scaffold's `window.login_aspect` contract for user login and authorization.
-- When the request needs master data, read `available-master-data-services.md` first. If a matching service exists, use the scaffold's `window.master_data_aspect` contract instead of inventing a separate fetch path.
-- Follow `style-intro.md` when it is present in the app root, together with `references/ui-style.md`.
-- Follow the UI direction in `references/ui-style.md` when designing the frontend. Capture the visual principles from Huashu Design's web examples without copying its original assets or branded content.
-- Make the app work under the subpath `/{token}/`, not just at `/`.
-- Expose all LiteApps through the shared public port `33333`.
-- Assign each app process a dedicated internal port in the inclusive range `33334-39999`. Start at `33334` and increment until a free port is found.
-- Treat the final external URL reported to the user as `http://you-host-name:33333/{token}/`.
-- Maintain machine-readable and human-readable records so current users and apps can be queried without scanning source files manually.
-- Keep `.lite-apps/app-registry.json` synchronized. Each record must include `name`, `token`, `local_path`, `port`, `internal_port`, `description`, `created_by`, `last_modified_by`, `created_at`, `last_modified_at`, and `is_disabled`.
-- In the registry, `name` must equal `token`, and `created_by` is the owner `userName`.
-- When `is_disabled=true`, the shared LiteApp host must stop routing traffic for that app.
-- `stop-app.js` means set `is_disabled=true`; `start-app.js` means set `is_disabled=false`.
-- Prefer the bundled Node scripts in `scripts/` for app initialization, internal port allocation, shared-host startup, registry maintenance, shutdown, and doc synchronization instead of re-implementing those flows ad hoc.
-- Keep deployment automation local and explicit. Do not add scripts that fetch remote code, manage secrets, alter unrelated system state, or attempt privilege escalation.
-- Support restart recovery through registry-driven restore scripts, but do not silently install OS startup hooks or scheduled tasks.
+- `references/stack.md`
+- `references/scaffold.md`
+- `references/scripts.md`
+- `references/autoload.md`
+- `references/ui-style.md`
+
+The primary audience is non-IT business users. Generated apps should contain
+business workspaces for data entry, fixed-rule calculation, filtering,
+collaboration, and database persistence.
+
+## Platform Contract
+
+- Store users once at platform level so every app can use the same account.
+- Support self-registration.
+- Support one authentication mechanism across apps:
+  - session token
+  - Bearer token
+  - Basic auth
+- Isolate app pages under `/{token}/`.
+- Isolate app data under the app directory.
+- Serve previews through the shared host at `http://you-host-name:33333/{token}/`.
+
+## Scaffold Contract
+
+Generated apps must include:
+
+- Express server.
+- NeDB data stores.
+- React frontend.
+- Ant Design Pro components.
+- ECharts for data visualization.
+- Normal app pages show the current user's own records and business filters.
+- Fixed business rules are calculated deterministically by the server and may be previewed in the UI.
+- Submitted data is stored in the app's NeDB `records.db`.
+- Payload schema versioning with read-time migration hooks.
+
+## Developer Interaction
+
+Before scaffolding or extending an app, guide the developer to state non-functional requirements, especially:
+
+- target business process
+- required form fields
+- fixed calculation rules
+- common filters and status flow
+- collaboration roles
+- authentication expectations
+- current-user data visibility rules
+- schema evolution expectations
+- preview availability
+
+If the user does not provide these details, use the secure defaults in the scaffold and record the assumptions in `APP-NOTES.md`, the agent notes file `.ai.md`, and `NON_FUNCTIONAL_REQUIREMENTS.md`.
 
 ## Workflow
 
-1. Inspect the workspace before changing anything.
-2. Read every available `templates/*/readme.md`, then choose the nearest template and adapt it.
-3. Resolve the output directory as `.lite-apps/apps/{token}` and create it if needed.
-4. Initialize the app folder and base app documents with `scripts/init-app.js`.
-5. Decide whether to extend an existing app in that target directory or scaffold a new one.
-6. Create a minimal but complete app:
-   - React frontend with a small but usable UI
-   - Express backend in TypeScript
-   - SQLite database with schema initialization
-   - At least one CRUD flow
-   - Health endpoint
-7. Add root-level scripts so the app is easy to install, run, build, start, and re-run behind the shared public port.
-8. Scaffold the actual project files with `scripts/scaffold-app.js`.
-9. Merge any existing `.lite-apps/customize/login-service.js` and `.lite-apps/customize/master-data-service.js` into the generated app's `server/customize/` folder.
-10. Copy `.lite-apps/customize/available-master-data-services.md` and `.lite-apps/customize/style-intro.md` into the app root when present.
-11. Sync app documentation with `scripts/sync-docs.js`.
-12. Prefer `scripts/deploy-app.js` for ordered deployment. It installs dependencies, builds the app, starts it, syncs docs, and updates the registry without race conditions.
-13. If deployment steps are run separately, run them in order: `install-app.js` -> `build-app.js` -> `start-app.js` -> `sync-docs.js` -> `update-registry.js`.
-14. Use `status-app.js` and `restart-app.js` for lifecycle checks and controlled restarts.
-15. Use `restore-apps.js` for post-reboot recovery, and `bootstrap-host.js` to print the command that a host-level startup mechanism should run.
-16. Return the required final app summary block together with the local commands and any important caveats.
+1. Inspect the workspace.
+2. Resolve the LiteApp root:
+   - `PLATFORM_DATA_ROOT/.lite-apps` when `PLATFORM_DATA_ROOT` is set
+   - otherwise `~/.lite-apps`
+3. Create app metadata with `scripts/init-app.js`.
+4. Scaffold from `templates/openclaw-liteapp` with `scripts/scaffold-app.js`.
+5. Install, build, and start with `scripts/deploy-app.js`.
+6. Verify:
+   - `/{token}/api/health`
+   - self-registration
+   - Basic auth
+   - normal-user data isolation
+   - fixed-rule calculation
+   - local business filtering
+   - data stored in `records.db`
+   - final preview URL
 
-## Implementation Defaults
+## Required Final Block
 
-- Use the structure and package guidance in `references/stack.md`.
-- Use the concrete scaffold commands in `references/scaffold.md` when building a new app from scratch.
-- Use the deployment scripts in `scripts/`.
-- Use the minimal script contracts in `references/scripts.md`.
-- Use the autoload compatibility rules in `references/autoload.md`.
-- Use the frontend style guidance in `references/ui-style.md`.
-- Prefer runtime customize service modules under `.lite-apps/customize/` and browser-facing bridge aspects generated by the scaffold.
-- Default local ports:
-  - frontend dev server: `5173`
-  - backend dev server: `3000` or `3001`
-  - shared public LiteApp host: `33333`
-  - production app server internal port: one free port in `33334-39999`
-- In development, use a Vite proxy for `/api`.
-- In production, serve `client/dist` from Express under the base path and keep API routes under `/{token}/api`.
-- Store the SQLite database in a project-local path such as `server/data/app.db`.
+Always finish app delivery with these four fields:
 
-## Platform URL Rules
-
-- Do not stop after scaffolding files. The task is incomplete until the app is actually runnable from the generated folder and a final URL has been produced or a concrete blocker has been confirmed.
-- Prefer exposing the production build, not the Vite dev server, so the final URL reflects the real integrated app.
-- Compute the final access URL for user-facing output as `http://you-host-name:33333/{token}/`.
-- Keep the external port fixed at `33333`.
-- Select the internal app port by scanning from `33334` upward and using the first free port up to `39999`.
-- Ensure frontend asset URLs, router behavior, and API calls all work when mounted beneath that subpath.
-- Keep each app isolated in its own process and directory. Do not multiplex multiple apps through one long-running server.
-- If a dev-time preview URL is needed, treat it as secondary. The primary deliverable is the final app URL plus its recorded metadata.
-
-## Queryability Rules
-
-- Make it easy to answer "which users exist?" and "which apps exist?" without launching app code.
-- Maintain `.lite-apps/app-registry.json` with `scripts/update-registry.js`.
-- Keep one machine-readable app metadata file and one human-readable app notes file in every app directory, managed through `scripts/init-app.js` and `scripts/sync-docs.js`.
-- Keep `.ai.md` in every app directory to record user requirements and AI design notes.
-- Do not keep `config.json` inside generated app directories.
-- Whenever the app is changed, update the corresponding metadata and notes in the same turn.
-- When the user asks to inspect existing apps, answer from `app-registry.json` first and only inspect app directories when details are missing or stale.
-
-## Delivery Requirements
-
-Always finish with:
-
-- a fixed, explicit final app info block with all four fields present and non-empty:
-  `Id: {token}`
-  `Name: {appName}`
-  `Description: {appSummary}`
-  `Url template: http://you-host-name:33333/{token}/  `
-- do not omit any of the four fields above, even if other delivery details are also included
-- keep the field names exactly as written above
-- if additional sections are included, place this four-field block at the end of the response
-
-- the generated project path
-- the app summary
-- the main files or folders created or updated
-- install and run commands
-- the final URL in the form `http://you-host-name:33333/{token}/`
-- the assigned public port `33333` and the internal app port
-- the registry and app-doc files that were created or updated
-- any limitations, such as the URL depending on the local process remaining alive
-
-## Example Requests
-
-- "Build me a simple task tracker and give me a public URL."
-- "Create a small React + Express + SQLite app for note taking and run it."
-- "Set up a demo web app in this folder, start it, and share an external link."
-- "Create a 轻应用 for internal data entry."
-- "Build a LiteApp for this workflow and run it locally."
+`Id: {token}`
+`Name: {appName}`
+`Description: {appSummary}`
+`Url template: http://you-host-name:33333/{token}/`
